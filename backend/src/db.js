@@ -58,6 +58,16 @@ async function init() {
       // Column might already exist
     }
 
+    // Add new product columns
+    try {
+      await client.query(`ALTER TABLE products ADD COLUMN colors TEXT`);
+      await client.query(`ALTER TABLE products ADD COLUMN sizeGroup VARCHAR(50)`);
+      await client.query(`ALTER TABLE products ADD COLUMN sizes TEXT`);
+      await client.query(`ALTER TABLE products ADD COLUMN remarks TEXT`);
+    } catch (e) {
+      // Columns might already exist
+    }
+
     await client.query(`CREATE TABLE IF NOT EXISTS order_items (
       id SERIAL PRIMARY KEY,
       orderId INTEGER NOT NULL REFERENCES orders(id),

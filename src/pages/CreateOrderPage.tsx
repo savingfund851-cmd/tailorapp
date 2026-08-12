@@ -27,10 +27,13 @@ export const CreateOrderPage = () => {
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('');
   const [clothColor, setClothColor] = useState('');
-  const [size, setSize] = useState('M');
+  const [size, setSize] = useState('');
   const [measurementsObj, setMeasurementsObj] = useState<Record<string, string>>({});
   const [extraMeasurements, setExtraMeasurements] = useState('');
-  const [clothImage, setClothImage] = useState('');
+  
+  const [productColors, setProductColors] = useState<string[]>([]);
+  const [productSizes, setProductSizes] = useState<string[]>([]);
+  const [productRemarks, setProductRemarks] = useState('');
 
   const [selectedMaterials, setSelectedMaterials] = useState<MaterialRow[]>([]);
 
@@ -52,11 +55,36 @@ export const CreateOrderPage = () => {
       setDescription(product.name);
       setPrice(String(product.basePrice));
       
-      // Setup dynamic measurements
-      const defaultMeas = product.defaultMeasurements ? product.defaultMeasurements.split(',').map((s: string) => s.trim()) : ['Length', 'Chest', 'Shoulder'];
-      const newMeasObj: Record<string, string> = {};
-      defaultMeas.forEach((m: string) => newMeasObj[m] = '');
+      // Setup dynamic measurements — now stored as JSON from product config
+      let newMeasObj: Record<string, string> = {};
+      if (product.defaultMeasurements) {
+        try {
+          const parsed = JSON.parse(product.defaultMeasurements);
+          // parsed is { Chest: "40", Length: "", ... } — use keys as labels, values as defaults
+          Object.keys(parsed).forEach((key: string) => {
+            newMeasObj[key] = parsed[key] || '';
+          });
+        } catch {
+          // Fallback: old comma-separated format
+          const labels = product.defaultMeasurements.split(',').map((s: string) => s.trim()).filter((s: string) => s);
+          labels.forEach((m: string) => newMeasObj[m] = '');
+        }
+      } else {
+        newMeasObj = { Length: '', Chest: '', Shoulder: '' };
+      }
       setMeasurementsObj(newMeasObj);
+
+      // Setup Colors & Sizes & Remarks
+      const c = product.colors ? product.colors.split(',').map((s: string) => s.trim()).filter((s: string) => s) : [];
+      setProductColors(c);
+      setClothColor(c.length > 0 ? c[0] : '');
+
+      const s = product.sizes ? product.sizes.split(',').map((s: string) => s.trim()).filter((s: string) => s) : ['M'];
+      setProductSizes(s);
+      setSize(s.length > 0 ? s[0] : '');
+      
+      setProductRemarks(product.remarks || '');
+      setExtraMeasurements(product.remarks || ''); // preload remarks as extra notes
 
       // Setup BOM
       if (product.materials && product.materials.length > 0) {
@@ -98,7 +126,7 @@ export const CreateOrderPage = () => {
     const formattedMeasurements = Object.entries(measurementsObj)
       .filter(([_, val]) => val.trim() !== '')
       .map(([key, val]) => `${key}: ${val}`)
-      .join('\n') + (extraMeasurements.trim() ? `\nExtra: ${extraMeasurements}` : '');
+      .join('\n') + (extraMeasurements.trim() ? `\nNotes: ${extraMeasurements}` : '');
 
     const payload = {
       customerName,
@@ -127,15 +155,6 @@ export const CreateOrderPage = () => {
     }
   };
 
-  const colorOptions = [
-    { name: 'Navy Blue', hex: '#1e3a5f' },
-    { name: 'Black', hex: '#1a1a1a' },
-    { name: 'White', hex: '#f0f0f0' },
-    { name: 'Charcoal', hex: '#36454f' },
-    { name: 'Maroon', hex: '#800000' },
-    { name: 'Olive', hex: '#556b2f' }
-  ];
-
   return (
     <div className="page-container">
       {toast && <div className="toast">{toast}</div>}
@@ -145,7 +164,7 @@ export const CreateOrderPage = () => {
         {error && <p className="error-text mb-4">{error}</p>}
 
         <div className="mb-6">
-          <label className="block mb-1">Customer Name</label>
+          <label className="block mb-1 font-semibold">Customer Name</label>
           <input type="text" className="glass-input" required value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="e.g. Ahmed Hossain" />
         </div>
 
@@ -163,51 +182,61 @@ export const CreateOrderPage = () => {
           <>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }} className="mb-6">
               <div>
-                <label className="block mb-1">Product Description</label>
+                <label className="block mb-1 font-semibold">Product Description</label>
                 <input type="text" className="glass-input" required value={description} onChange={e => setDescription(e.target.value)} />
               </div>
               <div>
-                <label className="block mb-1">Price (৳)</label>
+                <label className="block mb-1 font-semibold">Price (৳)</label>
                 <input type="number" className="glass-input" required value={price} onChange={e => setPrice(e.target.value)} />
               </div>
             </div>
 
-            <div className="mb-6">
-              <label className="block mb-2">Cloth Color</label>
-              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                {colorOptions.map(c => (
-                  <button
-                    key={c.name} type="button" onClick={() => setClothColor(c.name)}
-                    style={{
-                      width: '40px', height: '40px', borderRadius: '50%', background: c.hex,
-                      border: clothColor === c.name ? '3px solid var(--accent-1)' : '2px solid var(--glass-border)',
-                      cursor: 'pointer', transform: clothColor === c.name ? 'scale(1.15)' : 'scale(1)',
-                    }} title={c.name}
-                  />
-                ))}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }} className="mb-6">
+              <div>
+                <label className="block mb-2 font-semibold">Cloth Color</label>
+                {productColors.length > 0 ? (
+                  <select className="glass-input w-full" value={clothColor} onChange={e => setClothColor(e.target.value)} required>
+                    <option value="">Select Color...</option>
+                    {productColors.map(c => <option key={c} value={c}>{c}</option>)}
+                    <option value="Custom">Custom...</option>
+                  </select>
+                ) : null}
+                {(!productColors.length || clothColor === 'Custom') && (
+                  <input type="text" className="glass-input w-full mt-2" placeholder="Enter color" required onChange={e => {
+                    if (clothColor === 'Custom') {
+                      // We don't overwrite clothColor if it's "Custom", wait we need a separate state or just let them type
+                    }
+                  }} />
+                )}
+                {/* Real custom handling for color */}
+                {(!productColors.length || clothColor === 'Custom') ? (
+                  <input type="text" className="glass-input w-full mt-2" placeholder="Enter color" value={clothColor === 'Custom' ? '' : clothColor} onChange={e => setClothColor(e.target.value)} required />
+                ) : null}
               </div>
-              {clothColor && <p style={{ marginTop: '6px', fontSize: '0.85rem', color: 'var(--accent-1)' }}>Selected: {clothColor}</p>}
+
+              <div>
+                <label className="block mb-2 font-semibold">Size</label>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  {productSizes.map(s => (
+                    <button
+                      key={s} type="button" onClick={() => setSize(s)}
+                      style={{
+                        padding: '10px 18px', borderRadius: '10px',
+                        background: size === s ? 'linear-gradient(135deg, var(--accent-1), var(--accent-2))' : 'rgba(0,0,0,0.3)',
+                        color: size === s ? '#0a0e1a' : 'var(--text-secondary)', border: size === s ? 'none' : '1px solid var(--glass-border)',
+                        fontWeight: size === s ? '700' : '500', cursor: 'pointer',
+                      }}
+                    >{s}</button>
+                  ))}
+                  {productSizes.length === 0 && (
+                    <input type="text" className="glass-input" placeholder="e.g. M or 38" value={size} onChange={e => setSize(e.target.value)} required />
+                  )}
+                </div>
+              </div>
             </div>
 
             <div className="mb-6">
-              <label className="block mb-2">Size</label>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                {['S', 'M', 'L', 'XL', 'XXL'].map(s => (
-                  <button
-                    key={s} type="button" onClick={() => setSize(s)}
-                    style={{
-                      padding: '10px 18px', borderRadius: '10px',
-                      background: size === s ? 'linear-gradient(135deg, var(--accent-1), var(--accent-2))' : 'rgba(0,0,0,0.3)',
-                      color: size === s ? '#0a0e1a' : 'var(--text-secondary)', border: size === s ? 'none' : '1px solid var(--glass-border)',
-                      fontWeight: size === s ? '700' : '500', cursor: 'pointer',
-                    }}
-                  >{s}</button>
-                ))}
-              </div>
-            </div>
-
-            <div className="mb-6">
-              <label className="block mb-2">Measurements</label>
+              <label className="block mb-2 font-semibold">Measurements</label>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
                 {Object.keys(measurementsObj).map(key => (
                   <div key={key}>
@@ -216,7 +245,8 @@ export const CreateOrderPage = () => {
                   </div>
                 ))}
               </div>
-              <textarea className="glass-input" rows={2} value={extraMeasurements} onChange={e => setExtraMeasurements(e.target.value)} placeholder="Extra Notes..." />
+              <label className="block mb-1 font-semibold mt-4">Remarks / Notes</label>
+              <textarea className="glass-input" rows={2} value={extraMeasurements} onChange={e => setExtraMeasurements(e.target.value)} placeholder="Extra Tailoring Notes..." />
             </div>
 
             <div style={{ borderTop: '1px solid var(--glass-border)', paddingTop: '1.5rem', marginTop: '0.5rem' }}>

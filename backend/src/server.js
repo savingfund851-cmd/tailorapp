@@ -94,11 +94,11 @@ app.get('/api/products', authenticate, async (req, res) => {
 });
 
 app.post('/api/products', authenticate, async (req, res) => {
-  const { name, category, basePrice, defaultMeasurements, materials } = req.body;
+  const { name, category, basePrice, defaultMeasurements, materials, colors, sizeGroup, sizes, remarks } = req.body;
   try {
     const result = await run(
-      'INSERT INTO products (name, category, basePrice, defaultMeasurements, createdAt) VALUES (?, ?, ?, ?, ?) RETURNING id',
-      [name, category, basePrice, defaultMeasurements, new Date().toISOString()]
+      'INSERT INTO products (name, category, basePrice, defaultMeasurements, colors, sizeGroup, sizes, remarks, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id',
+      [name, category, basePrice, defaultMeasurements, colors || '', sizeGroup || '', sizes || '', remarks || '', new Date().toISOString()]
     );
     const productId = result.lastID;
     if (materials && Array.isArray(materials)) {
