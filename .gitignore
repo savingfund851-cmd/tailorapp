@@ -30,3 +30,6 @@ dist-ssr
 # SQLite database file
 *.db
 backend/seed_admin.js
+
+.vercel
+.env*
