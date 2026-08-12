@@ -122,6 +122,29 @@ function convertSqliteToPg(sql) {
   return sql.replace(/\?/g, () => `$${paramCount++}`);
 }
 
+const camelMap = {
+  baseprice: 'basePrice',
+  defaultmeasurements: 'defaultMeasurements',
+  createdat: 'createdAt',
+  sizegroup: 'sizeGroup',
+  productid: 'productId',
+  materialid: 'materialId',
+  userid: 'userId',
+  customername: 'customerName',
+  orderid: 'orderId',
+  clothcolor: 'clothColor',
+  orderitemid: 'orderItemId'
+};
+
+function mapRow(row) {
+  if (!row) return row;
+  const mapped = {};
+  for (const key in row) {
+    mapped[camelMap[key] || key] = row[key];
+  }
+  return mapped;
+}
+
 async function run(sql, params = []) {
   const pgSql = convertSqliteToPg(sql);
   const res = await pool.query(pgSql, params);
@@ -133,13 +156,13 @@ async function run(sql, params = []) {
 async function get(sql, params = []) {
   const pgSql = convertSqliteToPg(sql);
   const res = await pool.query(pgSql, params);
-  return res.rows[0] || null;
+  return mapRow(res.rows[0] || null);
 }
 
 async function all(sql, params = []) {
   const pgSql = convertSqliteToPg(sql);
   const res = await pool.query(pgSql, params);
-  return res.rows;
+  return res.rows.map(mapRow);
 }
 
 module.exports = { pool, init, run, get, all };
