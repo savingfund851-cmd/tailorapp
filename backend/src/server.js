@@ -74,6 +74,61 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
+// --- Products API ---
+app.get('/api/products', authenticate, async (req, res) => {
+  try {
+    const products = await all('SELECT * FROM products');
+    const detailed = [];
+    for (const prod of products) {
+      const materials = await all(
+        'SELECT pm.quantity, m.id as materialId, m.name, m.unit FROM product_materials pm JOIN materials m ON pm.materialId = m.id WHERE pm.productId = ?',
+        [prod.id]
+      );
+      detailed.push({ ...prod, materials });
+    }
+    res.json(detailed);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/products', authenticate, async (req, res) => {
+  const { name, category, basePrice, defaultMeasurements, materials } = req.body;
+  try {
+    const result = await run(
+      'INSERT INTO products (name, category, basePrice, defaultMeasurements, createdAt) VALUES (?, ?, ?, ?, ?) RETURNING id',
+      [name, category, basePrice, defaultMeasurements, new Date().toISOString()]
+    );
+    const productId = result.lastID;
+    if (materials && Array.isArray(materials)) {
+      for (const mat of materials) {
+        await run(
+          'INSERT INTO product_materials (productId, materialId, quantity) VALUES (?, ?, ?)',
+          [productId, mat.materialId, mat.quantity]
+        );
+      }
+    }
+    res.status(201).json({ message: 'Product created', id: productId });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.delete('/api/products/:id', authenticate, async (req, res) => {
+  const productId = parseInt(req.params.id);
+  try {
+    await run('DELETE FROM product_materials WHERE productId = ?', [productId]);
+    await run('DELETE FROM products WHERE id = ?', [productId]);
+    res.json({ message: 'Product deleted' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+// --------------------
+
 // Inventory
 app.get('/api/inventory', authenticate, async (req, res) => {
   try {
@@ -142,12 +197,7 @@ app.post('/api/orders/custom', authenticate, async (req, res) => {
     }
   }
 
-  try {
-    await validateAndDeductStock(requiredMaterials);
-  } catch (e) {
-    return res.status(400).json({ error: e.message });
-  }
-
+  // We will NOT deduct stock here. Order is created as 'Pending Acceptance'
   // Calculate total
   let total = 0;
   for (const item of items) total += Number(item.price);
@@ -156,8 +206,8 @@ app.post('/api/orders/custom', authenticate, async (req, res) => {
   let orderResult;
   try {
     orderResult = await run(
-      'INSERT INTO orders (userId, customerName, total, status, createdAt) VALUES (?, ?, ?, ?, ?) RETURNING id',
-      [req.user.userId, customerName, total, 'Processing', new Date().toISOString()]
+      'INSERT INTO orders (userId, productId, customerName, total, status, createdAt) VALUES (?, ?, ?, ?, ?, ?) RETURNING id',
+      [req.user.userId, req.body.productId || null, customerName, total, 'Pending Acceptance', new Date().toISOString()]
     );
   } catch (err) {
     console.error(err);
@@ -182,12 +232,12 @@ app.post('/api/orders/custom', authenticate, async (req, res) => {
   }
 
   // Insert workflow steps
-  const steps = ['Cutting', 'Sewing', 'Finishing', 'Delivery'];
+  const steps = ['Cutting', 'Sewing', 'Finishing', 'Quality Check', 'Final Delivery'];
   for (const stepName of steps) {
     await run('INSERT INTO workflow_steps (orderId, step) VALUES (?, ?)', [orderId, stepName]);
   }
 
-  res.status(201).json({ orderId, message: 'Custom order created successfully' });
+  res.status(201).json({ orderId, message: 'Custom order created successfully. Pending Acceptance.' });
 });
 
 // Get user's orders with items and workflow
@@ -233,6 +283,54 @@ app.put('/api/orders/:id/step', authenticate, async (req, res) => {
     await run('UPDATE orders SET status = ? WHERE id = ?', [newStatus, orderId]);
     const updatedOrder = await get('SELECT * FROM orders WHERE id = ?', [orderId]);
     res.json({ message: `${step} completed`, order: { ...updatedOrder, workflow: allSteps } });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Accept order (check stock, deduct, start Cutting)
+app.post('/api/orders/:id/accept', authenticate, async (req, res) => {
+  const orderId = parseInt(req.params.id);
+  try {
+    const order = await get('SELECT * FROM orders WHERE id = ?', [orderId]);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (order.status !== 'Pending Acceptance') return res.status(400).json({ error: 'Order is not pending' });
+
+    // Gather required materials from order_items and order_item_materials
+    const items = await all('SELECT * FROM order_items WHERE orderId = ?', [orderId]);
+    const requiredMaterials = {};
+    for (const item of items) {
+      const mats = await all('SELECT materialId, quantity FROM order_item_materials WHERE orderItemId = ?', [item.id]);
+      for (const mat of mats) {
+        requiredMaterials[mat.materialId] = (requiredMaterials[mat.materialId] || 0) + Number(mat.quantity);
+      }
+    }
+
+    try {
+      await validateAndDeductStock(requiredMaterials);
+    } catch (e) {
+      return res.status(400).json({ error: e.message });
+    }
+
+    await run('UPDATE orders SET status = ? WHERE id = ?', ['Cutting', orderId]);
+    res.json({ message: 'Order accepted and stock deducted. Workflow started.' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Reject order
+app.post('/api/orders/:id/reject', authenticate, async (req, res) => {
+  const orderId = parseInt(req.params.id);
+  try {
+    const order = await get('SELECT * FROM orders WHERE id = ?', [orderId]);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (order.status !== 'Pending Acceptance') return res.status(400).json({ error: 'Order is not pending' });
+
+    await run('UPDATE orders SET status = ? WHERE id = ?', ['Rejected', orderId]);
+    res.json({ message: 'Order rejected.' });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });

@@ -13,7 +13,7 @@ export const WorkflowStepper: React.FC<WorkflowStepperProps> = ({ currentStep, o
   const lang = auth?.lang || 'en';
   const t = useTranslation(lang);
   
-  const steps = [t.cutting, t.sewing, t.finishing, t.delivery];
+  const steps = [t.cutting, t.sewing, t.finishing, t.qualityCheck, t.finalDelivery];
 
   return (
     <div className="stepper-container" id={`stepper-${orderId}`}>

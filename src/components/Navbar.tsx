@@ -18,6 +18,7 @@ export const Navbar = () => {
           <Link to="/" className="nav-link" id="nav-home">{t.home}</Link>
           {auth.isAuthenticated && (
             <>
+              <Link to="/products" className="nav-link" id="nav-products">Products</Link>
               <Link to="/create-order" className="nav-link" id="nav-create-order">+ New Order</Link>
               <Link to="/orders" className="nav-link" id="nav-orders">{t.orders}</Link>
               <Link to="/inventory" className="nav-link" id="nav-inventory">Inventory</Link>

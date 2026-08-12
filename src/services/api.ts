@@ -42,11 +42,19 @@ export const getInventory = (token?: string) => apiGet('/inventory', token);
 export const addInventory = (payload: { name: string; unit: string; stock: number }, token: string) => 
   apiPost('/inventory', payload, token);
 
+// Products
+export const getProducts = (token?: string) => apiGet('/products', token);
+export const createProduct = (payload: any, token: string) => apiPost('/products', payload, token);
+export const deleteProduct = (id: number, token: string) => request('DELETE', `/products/${id}`, undefined, token);
+
 // Orders
 export const createCustomOrder = (payload: any, token: string) =>
   apiPost('/orders/custom', payload, token);
 
 export const getOrders = (token: string) => apiGet('/orders', token);
+
+export const acceptOrder = (orderId: number, token: string) => apiPost(`/orders/${orderId}/accept`, {}, token);
+export const rejectOrder = (orderId: number, token: string) => apiPost(`/orders/${orderId}/reject`, {}, token);
 
 export const advanceStep = (orderId: number, step: string, token: string) =>
   apiPut(`/orders/${orderId}/step`, { step }, token);
@@ -54,3 +62,4 @@ export const advanceStep = (orderId: number, step: string, token: string) =>
 // Invoice (returns PDF blob)
 export const getInvoicePdf = (orderId: number, token: string) =>
   apiGet(`/orders/${orderId}/invoice`, token);
+

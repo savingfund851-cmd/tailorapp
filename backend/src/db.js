@@ -25,14 +25,38 @@ async function init() {
       stock REAL NOT NULL
     )`);
 
+    await client.query(`CREATE TABLE IF NOT EXISTS products (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      category VARCHAR(100) NOT NULL,
+      basePrice REAL NOT NULL,
+      defaultMeasurements TEXT,
+      createdAt VARCHAR(255) NOT NULL
+    )`);
+
+    await client.query(`CREATE TABLE IF NOT EXISTS product_materials (
+      id SERIAL PRIMARY KEY,
+      productId INTEGER NOT NULL REFERENCES products(id),
+      materialId INTEGER NOT NULL REFERENCES materials(id),
+      quantity REAL NOT NULL
+    )`);
+
     await client.query(`CREATE TABLE IF NOT EXISTS orders (
       id SERIAL PRIMARY KEY,
       userId INTEGER NOT NULL REFERENCES users(id),
+      productId INTEGER,
       customerName VARCHAR(255) NOT NULL,
       total REAL NOT NULL,
       status VARCHAR(50) NOT NULL,
       createdAt VARCHAR(255) NOT NULL
     )`);
+
+    // Add productId column if it doesn't exist (for existing tables)
+    try {
+      await client.query(`ALTER TABLE orders ADD COLUMN productId INTEGER REFERENCES products(id)`);
+    } catch (e) {
+      // Column might already exist
+    }
 
     await client.query(`CREATE TABLE IF NOT EXISTS order_items (
       id SERIAL PRIMARY KEY,

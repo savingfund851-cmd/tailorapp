@@ -1,16 +1,19 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext';
-import { getInventory, createCustomOrder } from '../services/api';
+import { getProducts, getInventory, createCustomOrder } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 
 interface MaterialRow {
   materialId: string;
   quantity: string;
+  name?: string;
+  unit?: string;
 }
 
 export const CreateOrderPage = () => {
   const auth = useContext(AuthContext);
   const navigate = useNavigate();
+  const [products, setProducts] = useState<any[]>([]);
   const [inventory, setInventory] = useState<any[]>([]);
   const [toast, setToast] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -18,27 +21,56 @@ export const CreateOrderPage = () => {
 
   // Form state
   const [customerName, setCustomerName] = useState('');
+  const [selectedProductId, setSelectedProductId] = useState('');
+  
+  // These auto-fill from product, but can be modified
   const [description, setDescription] = useState('');
+  const [price, setPrice] = useState('');
   const [clothColor, setClothColor] = useState('');
   const [size, setSize] = useState('M');
-  const [measurementsObj, setMeasurementsObj] = useState({
-    Chest: '',
-    Length: '',
-    Shoulder: '',
-    Sleeve: '',
-    Waist: '',
-    Collar: ''
-  });
+  const [measurementsObj, setMeasurementsObj] = useState<Record<string, string>>({});
   const [extraMeasurements, setExtraMeasurements] = useState('');
-  const [price, setPrice] = useState('');
   const [clothImage, setClothImage] = useState('');
 
-  // Dynamic materials state
-  const [selectedMaterials, setSelectedMaterials] = useState<MaterialRow[]>([{ materialId: '', quantity: '' }]);
+  const [selectedMaterials, setSelectedMaterials] = useState<MaterialRow[]>([]);
 
   useEffect(() => {
-    getInventory().then(setInventory).catch(console.error);
-  }, []);
+    if (auth?.token) {
+      Promise.all([getProducts(auth.token), getInventory(auth.token)])
+        .then(([prodData, invData]) => {
+          setProducts(prodData);
+          setInventory(invData);
+        })
+        .catch(console.error);
+    }
+  }, [auth?.token]);
+
+  const handleProductSelect = (pid: string) => {
+    setSelectedProductId(pid);
+    const product = products.find(p => p.id === Number(pid));
+    if (product) {
+      setDescription(product.name);
+      setPrice(String(product.basePrice));
+      
+      // Setup dynamic measurements
+      const defaultMeas = product.defaultMeasurements ? product.defaultMeasurements.split(',').map((s: string) => s.trim()) : ['Length', 'Chest', 'Shoulder'];
+      const newMeasObj: Record<string, string> = {};
+      defaultMeas.forEach((m: string) => newMeasObj[m] = '');
+      setMeasurementsObj(newMeasObj);
+
+      // Setup BOM
+      if (product.materials && product.materials.length > 0) {
+        setSelectedMaterials(product.materials.map((m: any) => ({
+          materialId: String(m.materialId),
+          quantity: String(m.quantity),
+          name: m.name,
+          unit: m.unit
+        })));
+      } else {
+        setSelectedMaterials([]);
+      }
+    }
+  };
 
   const handleMaterialChange = (index: number, field: string, value: string) => {
     const newMats = [...selectedMaterials];
@@ -46,19 +78,18 @@ export const CreateOrderPage = () => {
     setSelectedMaterials(newMats);
   };
 
-  const addMaterialRow = () => {
-    setSelectedMaterials([...selectedMaterials, { materialId: '', quantity: '' }]);
-  };
-
+  const addMaterialRow = () => setSelectedMaterials([...selectedMaterials, { materialId: '', quantity: '' }]);
   const removeMaterialRow = (index: number) => {
-    if (selectedMaterials.length > 1) {
-      setSelectedMaterials(selectedMaterials.filter((_, i) => i !== index));
-    }
+    setSelectedMaterials(selectedMaterials.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!auth?.token) return;
+    if (!selectedProductId) {
+      setError('Please select a product first.');
+      return;
+    }
     setError('');
     setLoading(true);
 
@@ -71,6 +102,7 @@ export const CreateOrderPage = () => {
 
     const payload = {
       customerName,
+      productId: Number(selectedProductId),
       items: [{
         description,
         clothColor,
@@ -86,19 +118,8 @@ export const CreateOrderPage = () => {
 
     try {
       await createCustomOrder(payload, auth.token);
-      setToast('✅ Order created successfully! Raw materials deducted from inventory.');
+      setToast('✅ Order created! It is now Pending Acceptance.');
       setTimeout(() => { setToast(null); navigate('/orders'); }, 2500);
-
-      // Reset
-      setCustomerName('');
-      setDescription('');
-      setClothColor('');
-      setMeasurementsObj({ Chest: '', Length: '', Shoulder: '', Sleeve: '', Waist: '', Collar: '' });
-      setExtraMeasurements('');
-      setPrice('');
-      setSelectedMaterials([{ materialId: '', quantity: '' }]);
-      // Refresh inventory
-      getInventory().then(setInventory);
     } catch (err: any) {
       setError(err.message || 'Failed to create order');
     } finally {
@@ -112,165 +133,114 @@ export const CreateOrderPage = () => {
     { name: 'White', hex: '#f0f0f0' },
     { name: 'Charcoal', hex: '#36454f' },
     { name: 'Maroon', hex: '#800000' },
-    { name: 'Olive', hex: '#556b2f' },
-    { name: 'Royal Blue', hex: '#4169e1' },
-    { name: 'Cream', hex: '#fffdd0' },
-    { name: 'Grey', hex: '#808080' },
-    { name: 'Brown', hex: '#654321' },
+    { name: 'Olive', hex: '#556b2f' }
   ];
 
   return (
     <div className="page-container">
       {toast && <div className="toast">{toast}</div>}
-      <h1 className="page-title">✂️ Create Custom Order</h1>
+      <h1 className="page-title">🛒 Create Order</h1>
 
       <form onSubmit={handleSubmit} className="glass-card" style={{ padding: '2rem', maxWidth: '700px', margin: '0 auto' }}>
         {error && <p className="error-text mb-4">{error}</p>}
 
-        {/* Customer Info */}
         <div className="mb-6">
           <label className="block mb-1">Customer Name</label>
-          <input type="text" className="glass-input" required value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="e.g. Ahmed Hossain" id="order-customer-name" />
+          <input type="text" className="glass-input" required value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="e.g. Ahmed Hossain" />
         </div>
 
-        {/* Product Details */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }} className="mb-6">
-          <div>
-            <label className="block mb-1">Product / Code</label>
-            <input type="text" className="glass-input" required value={description} onChange={e => setDescription(e.target.value)} placeholder="e.g. Formal Shirt, Panjabi" id="order-description" />
-          </div>
-          <div>
-            <label className="block mb-1">Price (৳)</label>
-            <input type="number" className="glass-input" required value={price} onChange={e => setPrice(e.target.value)} placeholder="e.g. 1500" id="order-price" />
-          </div>
-        </div>
-
-        {/* Cloth Image (optional) */}
-        <div className="mb-6">
-          <label className="block mb-1">Cloth Image URL (optional)</label>
-          <input type="url" className="glass-input" value={clothImage} onChange={e => setClothImage(e.target.value)} placeholder="Paste image link of cloth..." id="order-cloth-image" />
-          {clothImage && (
-            <div style={{ marginTop: '8px', borderRadius: '8px', overflow: 'hidden', maxWidth: '200px' }}>
-              <img src={clothImage} alt="Cloth preview" style={{ width: '100%', borderRadius: '8px', border: '1px solid var(--glass-border)' }} />
-            </div>
-          )}
-        </div>
-
-        {/* Color Selection */}
-        <div className="mb-6">
-          <label className="block mb-2">Cloth Color</label>
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            {colorOptions.map(c => (
-              <button
-                key={c.name}
-                type="button"
-                onClick={() => setClothColor(c.name)}
-                style={{
-                  width: '40px',
-                  height: '40px',
-                  borderRadius: '50%',
-                  background: c.hex,
-                  border: clothColor === c.name ? '3px solid var(--accent-1)' : '2px solid var(--glass-border)',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease',
-                  transform: clothColor === c.name ? 'scale(1.15)' : 'scale(1)',
-                  boxShadow: clothColor === c.name ? '0 0 10px rgba(20,184,166,0.4)' : 'none'
-                }}
-                title={c.name}
-              />
+        <div className="mb-6 p-4 rounded-lg" style={{ background: 'rgba(20, 184, 166, 0.1)', border: '1px solid var(--accent-1)' }}>
+          <label className="block mb-1 font-bold text-accent-1">Select Product Base</label>
+          <select className="glass-input w-full font-bold" required value={selectedProductId} onChange={e => handleProductSelect(e.target.value)}>
+            <option value="">-- Choose a Product --</option>
+            {products.map(p => (
+              <option key={p.id} value={p.id}>{p.name} (৳{p.basePrice})</option>
             ))}
-          </div>
-          {clothColor && <p style={{ marginTop: '6px', fontSize: '0.85rem', color: 'var(--accent-1)' }}>Selected: {clothColor}</p>}
+          </select>
         </div>
 
-        {/* Size Selection */}
-        <div className="mb-6">
-          <label className="block mb-2">Size</label>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            {['S', 'M', 'L', 'XL', 'XXL'].map(s => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setSize(s)}
-                style={{
-                  padding: '10px 18px',
-                  borderRadius: '10px',
-                  background: size === s ? 'linear-gradient(135deg, var(--accent-1), var(--accent-2))' : 'rgba(0,0,0,0.3)',
-                  color: size === s ? '#0a0e1a' : 'var(--text-secondary)',
-                  border: size === s ? 'none' : '1px solid var(--glass-border)',
-                  fontWeight: size === s ? '700' : '500',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease',
-                }}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Body Measurements */}
-        <div className="mb-6">
-          <label className="block mb-2">Body Measurements</label>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
-            {Object.keys(measurementsObj).map(key => (
-              <div key={key}>
-                <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{key}</label>
-                <input 
-                  type="text" 
-                  className="glass-input" 
-                  placeholder="..." 
-                  value={measurementsObj[key as keyof typeof measurementsObj]} 
-                  onChange={e => setMeasurementsObj({ ...measurementsObj, [key]: e.target.value })} 
-                />
+        {selectedProductId && (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }} className="mb-6">
+              <div>
+                <label className="block mb-1">Product Description</label>
+                <input type="text" className="glass-input" required value={description} onChange={e => setDescription(e.target.value)} />
               </div>
-            ))}
-          </div>
-          <label className="block mb-1" style={{ fontSize: '0.85rem' }}>Extra Notes / Measurements (Optional)</label>
-          <textarea 
-            className="glass-input" 
-            rows={2} 
-            value={extraMeasurements} 
-            onChange={e => setExtraMeasurements(e.target.value)} 
-            placeholder="Any other specific instructions..." 
-            style={{ resize: 'vertical' }} 
-          />
-        </div>
-
-        {/* BOM — Raw Material Consumption */}
-        <div style={{ borderTop: '1px solid var(--glass-border)', paddingTop: '1.5rem', marginTop: '0.5rem' }}>
-          <h3 className="mb-4" style={{ color: 'var(--accent-1)', fontSize: '1rem', fontWeight: '600' }}>📦 Raw Material Consumption (BOM)</h3>
-
-          {selectedMaterials.map((mat, index) => (
-            <div key={index} style={{ display: 'flex', gap: '10px', marginBottom: '10px', alignItems: 'center' }}>
-              <select className="glass-input flex-1" required value={mat.materialId} onChange={e => handleMaterialChange(index, 'materialId', e.target.value)} id={`material-select-${index}`}>
-                <option value="">Select Material...</option>
-                {inventory.map(inv => (
-                  <option key={inv.id} value={inv.id}>{inv.name} (Stock: {inv.stock} {inv.unit})</option>
-                ))}
-              </select>
-              <input
-                type="number"
-                step="0.1"
-                className="glass-input"
-                style={{ width: '100px' }}
-                placeholder="Qty"
-                required
-                value={mat.quantity}
-                onChange={e => handleMaterialChange(index, 'quantity', e.target.value)}
-                id={`material-qty-${index}`}
-              />
-              {selectedMaterials.length > 1 && (
-                <button type="button" onClick={() => removeMaterialRow(index)} style={{ background: 'rgba(239,68,68,0.15)', color: 'var(--error)', border: 'none', borderRadius: '8px', padding: '8px 12px', cursor: 'pointer', fontSize: '1rem' }}>✕</button>
-              )}
+              <div>
+                <label className="block mb-1">Price (৳)</label>
+                <input type="number" className="glass-input" required value={price} onChange={e => setPrice(e.target.value)} />
+              </div>
             </div>
-          ))}
-          <button type="button" className="btn-secondary text-sm" onClick={addMaterialRow} style={{ marginTop: '4px' }}>+ Add Material</button>
-        </div>
 
-        <button type="submit" className="btn-primary w-full mt-6" style={{ padding: '14px', fontSize: '1.05rem' }} disabled={loading} id="btn-submit-order">
-          {loading ? 'Creating Order...' : '✂️ Create Custom Order'}
-        </button>
+            <div className="mb-6">
+              <label className="block mb-2">Cloth Color</label>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                {colorOptions.map(c => (
+                  <button
+                    key={c.name} type="button" onClick={() => setClothColor(c.name)}
+                    style={{
+                      width: '40px', height: '40px', borderRadius: '50%', background: c.hex,
+                      border: clothColor === c.name ? '3px solid var(--accent-1)' : '2px solid var(--glass-border)',
+                      cursor: 'pointer', transform: clothColor === c.name ? 'scale(1.15)' : 'scale(1)',
+                    }} title={c.name}
+                  />
+                ))}
+              </div>
+              {clothColor && <p style={{ marginTop: '6px', fontSize: '0.85rem', color: 'var(--accent-1)' }}>Selected: {clothColor}</p>}
+            </div>
+
+            <div className="mb-6">
+              <label className="block mb-2">Size</label>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {['S', 'M', 'L', 'XL', 'XXL'].map(s => (
+                  <button
+                    key={s} type="button" onClick={() => setSize(s)}
+                    style={{
+                      padding: '10px 18px', borderRadius: '10px',
+                      background: size === s ? 'linear-gradient(135deg, var(--accent-1), var(--accent-2))' : 'rgba(0,0,0,0.3)',
+                      color: size === s ? '#0a0e1a' : 'var(--text-secondary)', border: size === s ? 'none' : '1px solid var(--glass-border)',
+                      fontWeight: size === s ? '700' : '500', cursor: 'pointer',
+                    }}
+                  >{s}</button>
+                ))}
+              </div>
+            </div>
+
+            <div className="mb-6">
+              <label className="block mb-2">Measurements</label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+                {Object.keys(measurementsObj).map(key => (
+                  <div key={key}>
+                    <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{key}</label>
+                    <input type="text" className="glass-input" placeholder="..." value={measurementsObj[key]} onChange={e => setMeasurementsObj({ ...measurementsObj, [key]: e.target.value })} />
+                  </div>
+                ))}
+              </div>
+              <textarea className="glass-input" rows={2} value={extraMeasurements} onChange={e => setExtraMeasurements(e.target.value)} placeholder="Extra Notes..." />
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--glass-border)', paddingTop: '1.5rem', marginTop: '0.5rem' }}>
+              <h3 className="mb-4" style={{ color: 'var(--accent-1)', fontSize: '1rem', fontWeight: '600' }}>📦 Editable BOM (From Product)</h3>
+              {selectedMaterials.map((mat, index) => (
+                <div key={index} style={{ display: 'flex', gap: '10px', marginBottom: '10px', alignItems: 'center' }}>
+                  <select className="glass-input flex-1" required value={mat.materialId} onChange={e => handleMaterialChange(index, 'materialId', e.target.value)}>
+                    <option value="">Select Material...</option>
+                    {inventory.map(inv => (
+                      <option key={inv.id} value={inv.id}>{inv.name} (Stock: {inv.stock})</option>
+                    ))}
+                  </select>
+                  <input type="number" step="0.1" className="glass-input" style={{ width: '100px' }} placeholder="Qty" required value={mat.quantity} onChange={e => handleMaterialChange(index, 'quantity', e.target.value)} />
+                  <button type="button" onClick={() => removeMaterialRow(index)} style={{ background: 'rgba(239,68,68,0.15)', color: 'var(--error)', border: 'none', borderRadius: '8px', padding: '8px 12px', cursor: 'pointer', fontSize: '1rem' }}>✕</button>
+                </div>
+              ))}
+              <button type="button" className="btn-secondary text-sm" onClick={addMaterialRow} style={{ marginTop: '4px' }}>+ Add Material</button>
+            </div>
+
+            <button type="submit" className="btn-primary w-full mt-6" style={{ padding: '14px', fontSize: '1.05rem' }} disabled={loading}>
+              {loading ? 'Creating Order...' : '🛒 Create Pending Order'}
+            </button>
+          </>
+        )}
       </form>
     </div>
   );
