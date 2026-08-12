@@ -393,6 +393,7 @@ app.get('/api/orders/:id/invoice', authenticate, async (req, res) => {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
   }
+});
 
 // ==================== BILLING API ====================
 
