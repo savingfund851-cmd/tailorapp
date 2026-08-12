@@ -147,9 +147,12 @@ app.post('/api/inventory', authenticate, async (req, res) => {
     return res.status(400).json({ error: 'Missing required fields' });
   }
 
+  const cleanName = name.trim();
+  const cleanUnit = unit.trim();
+
   try {
-    // Check if material already exists
-    const existing = await get('SELECT id, stock FROM materials WHERE name = ? AND unit = ?', [name, unit]);
+    // Check if material already exists (case insensitive)
+    const existing = await get('SELECT id, stock FROM materials WHERE LOWER(name) = LOWER(?) AND LOWER(unit) = LOWER(?)', [cleanName, cleanUnit]);
     
     if (existing) {
       // Update existing stock
@@ -157,7 +160,7 @@ app.post('/api/inventory', authenticate, async (req, res) => {
       res.json({ message: 'Stock updated successfully', id: existing.id });
     } else {
       // Add new material
-      const result = await run('INSERT INTO materials (name, unit, stock) VALUES (?, ?, ?) RETURNING id', [name, unit, Number(stock)]);
+      const result = await run('INSERT INTO materials (name, unit, stock) VALUES (?, ?, ?) RETURNING id', [cleanName, cleanUnit, Number(stock)]);
       res.status(201).json({ message: 'New material added successfully', id: result.lastID });
     }
   } catch (err) {

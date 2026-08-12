@@ -17,8 +17,9 @@ export const InventoryPage = () => {
 
   useEffect(() => {
     const fetchInventory = async () => {
+      if (!auth?.token) return;
       try {
-        const data = await getInventory();
+        const data = await getInventory(auth.token);
         setInventory(data);
       } catch (err) {
         setError('Failed to fetch inventory');
@@ -27,7 +28,7 @@ export const InventoryPage = () => {
       }
     };
     fetchInventory();
-  }, []);
+  }, [auth?.token]);
 
   const handleAddStock = async (e: React.FormEvent) => {
     e.preventDefault();
