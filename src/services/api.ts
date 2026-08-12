@@ -63,3 +63,11 @@ export const advanceStep = (orderId: number, step: string, token: string) =>
 export const getInvoicePdf = (orderId: number, token: string) =>
   apiGet(`/orders/${orderId}/invoice`, token);
 
+// Billing
+export const getBilling = (token: string) => apiGet('/billing', token);
+export const collectPayment = (orderId: number, amount: number, note: string, token: string) =>
+  apiPost(`/billing/${orderId}/pay`, { amount, note }, token);
+export const bulkCollectPayment = (payments: { orderId: number; amount: number; note?: string }[], token: string) =>
+  apiPost('/billing/bulk-pay', { payments }, token);
+export const getPaymentHistory = (token: string) => apiGet('/billing/history', token);
+

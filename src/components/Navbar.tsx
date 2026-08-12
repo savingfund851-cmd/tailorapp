@@ -21,6 +21,7 @@ export const Navbar = () => {
               <Link to="/products" className="nav-link" id="nav-products">Products</Link>
               <Link to="/create-order" className="nav-link" id="nav-create-order">+ New Order</Link>
               <Link to="/orders" className="nav-link" id="nav-orders">{t.orders}</Link>
+              <Link to="/billing" className="nav-link" id="nav-billing">💰 Billing</Link>
               <Link to="/inventory" className="nav-link" id="nav-inventory">Inventory</Link>
             </>
           )}

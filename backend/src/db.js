@@ -92,6 +92,21 @@ async function init() {
       completed INTEGER NOT NULL DEFAULT 0
     )`);
 
+    await client.query(`CREATE TABLE IF NOT EXISTS payments (
+      id SERIAL PRIMARY KEY,
+      orderId INTEGER NOT NULL REFERENCES orders(id),
+      amount REAL NOT NULL,
+      paymentDate VARCHAR(255) NOT NULL,
+      note TEXT
+    )`);
+
+    // Add paidAmount column to orders
+    try {
+      await client.query(`ALTER TABLE orders ADD COLUMN paidAmount REAL DEFAULT 0`);
+    } catch (e) {
+      // Column might already exist
+    }
+
     // Seed raw materials if empty
     const res = await client.query('SELECT COUNT(*) AS cnt FROM materials');
     if (parseInt(res.rows[0].cnt) === 0) {
@@ -133,7 +148,9 @@ const camelMap = {
   customername: 'customerName',
   orderid: 'orderId',
   clothcolor: 'clothColor',
-  orderitemid: 'orderItemId'
+  orderitemid: 'orderItemId',
+  paidamount: 'paidAmount',
+  paymentdate: 'paymentDate'
 };
 
 function mapRow(row) {

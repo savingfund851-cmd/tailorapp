@@ -10,6 +10,7 @@ import { InvoicePage } from './pages/InvoicePage';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { ProductsPage } from './pages/ProductsPage';
+import { BillingPage } from './pages/BillingPage';
 import './index.css';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -57,6 +58,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <InvoicePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/billing"
+            element={
+              <ProtectedRoute>
+                <BillingPage />
               </ProtectedRoute>
             }
           />

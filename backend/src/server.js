@@ -393,6 +393,130 @@ app.get('/api/orders/:id/invoice', authenticate, async (req, res) => {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
   }
+
+// ==================== BILLING API ====================
+
+// Get all delivered orders with billing info
+app.get('/api/billing', authenticate, async (req, res) => {
+  try {
+    const orders = await all(
+      'SELECT id, customerName, total, paidAmount, status, createdAt FROM orders WHERE userId = ? AND status IN (?, ?) ORDER BY createdAt DESC',
+      [req.user.userId, 'Delivered', 'Paid']
+    );
+    const billing = orders.map(o => ({
+      ...o,
+      due: Number(o.total) - Number(o.paidAmount || 0),
+      billStatus: Number(o.paidAmount || 0) === 0 ? 'Due' :
+                  Number(o.paidAmount || 0) >= Number(o.total) ? 'Paid' : 'Partial'
+    }));
+    res.json(billing);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Record payment for a single order (full or partial)
+app.post('/api/billing/:orderId/pay', authenticate, async (req, res) => {
+  const orderId = parseInt(req.params.orderId);
+  const { amount, note } = req.body;
+  if (!amount || Number(amount) <= 0) {
+    return res.status(400).json({ error: 'Invalid payment amount' });
+  }
+  try {
+    const order = await get('SELECT * FROM orders WHERE id = ? AND userId = ?', [orderId, req.user.userId]);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    const currentPaid = Number(order.paidAmount || 0);
+    const remaining = Number(order.total) - currentPaid;
+    const payAmount = Math.min(Number(amount), remaining);
+
+    if (payAmount <= 0) {
+      return res.status(400).json({ error: 'This order is already fully paid' });
+    }
+
+    // Insert payment record
+    await run(
+      'INSERT INTO payments (orderId, amount, paymentDate, note) VALUES (?, ?, ?, ?) RETURNING id',
+      [orderId, payAmount, new Date().toISOString(), note || '']
+    );
+
+    // Update order paidAmount
+    const newPaid = currentPaid + payAmount;
+    const newStatus = newPaid >= Number(order.total) ? 'Paid' : order.status;
+    await run('UPDATE orders SET paidAmount = ?, status = ? WHERE id = ?', [newPaid, newStatus, orderId]);
+
+    res.json({
+      message: `Payment of ৳${payAmount} recorded successfully`,
+      paidAmount: newPaid,
+      due: Number(order.total) - newPaid,
+      billStatus: newPaid >= Number(order.total) ? 'Paid' : 'Partial'
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Bulk payment — collect for multiple invoices at once (each can be partial)
+app.post('/api/billing/bulk-pay', authenticate, async (req, res) => {
+  const { payments: paymentsList } = req.body;
+  // paymentsList = [{ orderId, amount, note }, ...]
+  if (!Array.isArray(paymentsList) || paymentsList.length === 0) {
+    return res.status(400).json({ error: 'No payments provided' });
+  }
+
+  const results = [];
+  try {
+    for (const p of paymentsList) {
+      const orderId = Number(p.orderId);
+      const amount = Number(p.amount);
+      if (!orderId || amount <= 0) continue;
+
+      const order = await get('SELECT * FROM orders WHERE id = ? AND userId = ?', [orderId, req.user.userId]);
+      if (!order) continue;
+
+      const currentPaid = Number(order.paidAmount || 0);
+      const remaining = Number(order.total) - currentPaid;
+      const payAmount = Math.min(amount, remaining);
+
+      if (payAmount <= 0) continue;
+
+      await run(
+        'INSERT INTO payments (orderId, amount, paymentDate, note) VALUES (?, ?, ?, ?) RETURNING id',
+        [orderId, payAmount, new Date().toISOString(), p.note || 'Bulk collection']
+      );
+
+      const newPaid = currentPaid + payAmount;
+      const newStatus = newPaid >= Number(order.total) ? 'Paid' : order.status;
+      await run('UPDATE orders SET paidAmount = ?, status = ? WHERE id = ?', [newPaid, newStatus, orderId]);
+
+      results.push({ orderId, paid: payAmount, newTotal: newPaid, status: newPaid >= Number(order.total) ? 'Paid' : 'Partial' });
+    }
+
+    res.json({ message: `${results.length} payment(s) recorded`, results });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Payment history (all payments, filterable by date)
+app.get('/api/billing/history', authenticate, async (req, res) => {
+  try {
+    const payments = await all(
+      `SELECT p.id, p.orderId, p.amount, p.paymentDate, p.note, o.customerName, o.total
+       FROM payments p
+       JOIN orders o ON p.orderId = o.id
+       WHERE o.userId = ?
+       ORDER BY p.paymentDate DESC`,
+      [req.user.userId]
+    );
+    res.json(payments);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 const PORT = process.env.PORT || 4000;

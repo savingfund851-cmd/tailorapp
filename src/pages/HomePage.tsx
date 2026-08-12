@@ -30,6 +30,9 @@ export const HomePage = () => {
               <Link to="/inventory" className="btn-secondary" id="home-inventory" style={{ padding: '14px 32px', fontSize: '1.05rem' }}>
                 📦 Inventory
               </Link>
+              <Link to="/billing" className="btn-secondary" id="home-billing" style={{ padding: '14px 32px', fontSize: '1.05rem' }}>
+                💰 Billing
+              </Link>
             </>
           ) : (
             <>
