@@ -367,7 +367,7 @@ app.get('/api/orders/:id/invoice', authenticate, async (req, res) => {
     doc.moveDown();
     doc.fontSize(12).text(`Invoice #: INV-${String(orderId).padStart(4, '0')}`);
     doc.text(`Date: ${order.createdAt.split('T')[0]}`);
-    doc.text(`Customer: ${order.customerName}`);
+    doc.text(`Client: ${order.customerName}`);
     doc.moveDown();
     // Table header
     doc.font('Helvetica-Bold');

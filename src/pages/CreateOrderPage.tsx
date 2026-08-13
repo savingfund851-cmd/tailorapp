@@ -164,7 +164,7 @@ export const CreateOrderPage = () => {
         {error && <p className="error-text mb-4">{error}</p>}
 
         <div className="mb-6">
-          <label className="block mb-1 font-semibold">Customer Name</label>
+          <label className="block mb-1 font-semibold">Client Name</label>
           <input type="text" className="glass-input" required value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="e.g. Ahmed Hossain" />
         </div>
 

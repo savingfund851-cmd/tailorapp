@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useMemo } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { useTranslation } from '../i18n';
 import { getBilling, collectPayment, bulkCollectPayment, getPaymentHistory } from '../services/api';
@@ -7,6 +7,8 @@ export const BillingPage = () => {
   const auth = useContext(AuthContext);
   const t = useTranslation(auth?.lang || 'en');
   const [tab, setTab] = useState<'pending' | 'history'>('pending');
+  const [viewType, setViewType] = useState<'client' | 'invoice'>('client');
+  
   const [bills, setBills] = useState<any[]>([]);
   const [history, setHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -15,6 +17,7 @@ export const BillingPage = () => {
   // Filters
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [filterClient, setFilterClient] = useState('');
   const [filterInvoice, setFilterInvoice] = useState('');
 
   // Payment modal
@@ -48,30 +51,52 @@ export const BillingPage = () => {
   useEffect(() => { fetchData(); }, [auth?.token]);
 
   // Filter bills
-  const filteredBills = bills.filter(b => {
-    if (b.billStatus === 'Paid') return false; // Only show pending/partial
-    const orderDate = b.createdAt?.split('T')[0] || '';
-    if (dateFrom && orderDate < dateFrom) return false;
-    if (dateTo && orderDate > dateTo) return false;
-    if (filterInvoice && !String(b.id).includes(filterInvoice)) return false;
-    return true;
-  });
+  const filteredBills = useMemo(() => {
+    return bills.filter(b => {
+      if (b.billStatus === 'Paid') return false; // Only show pending/partial
+      const orderDate = b.createdAt?.split('T')[0] || '';
+      if (dateFrom && orderDate < dateFrom) return false;
+      if (dateTo && orderDate > dateTo) return false;
+      if (filterInvoice && !String(b.id).includes(filterInvoice)) return false;
+      if (filterClient && !b.customerName?.toLowerCase().includes(filterClient.toLowerCase())) return false;
+      return true;
+    });
+  }, [bills, dateFrom, dateTo, filterInvoice, filterClient]);
+
+  // Group pending bills by Client Name
+  const clientGroups = useMemo(() => {
+    const map: Record<string, any[]> = {};
+    filteredBills.forEach(b => {
+      const name = b.customerName || 'Unknown Client';
+      if (!map[name]) map[name] = [];
+      map[name].push(b);
+    });
+    return Object.entries(map).map(([clientName, clientBills]) => {
+      const totalDue = clientBills.reduce((sum, b) => sum + (Number(b.total) - Number(b.paidAmount || 0)), 0);
+      const totalAmount = clientBills.reduce((sum, b) => sum + Number(b.total), 0);
+      const totalPaid = clientBills.reduce((sum, b) => sum + Number(b.paidAmount || 0), 0);
+      return { clientName, totalDue, totalAmount, totalPaid, bills: clientBills };
+    });
+  }, [filteredBills]);
 
   // Filter history
-  const filteredHistory = history.filter(p => {
-    const pDate = p.paymentDate?.split('T')[0] || '';
-    if (dateFrom && pDate < dateFrom) return false;
-    if (dateTo && pDate > dateTo) return false;
-    if (filterInvoice && !String(p.orderId).includes(filterInvoice)) return false;
-    return true;
-  });
+  const filteredHistory = useMemo(() => {
+    return history.filter(p => {
+      const pDate = p.paymentDate?.split('T')[0] || '';
+      if (dateFrom && pDate < dateFrom) return false;
+      if (dateTo && pDate > dateTo) return false;
+      if (filterInvoice && !String(p.orderId).includes(filterInvoice)) return false;
+      if (filterClient && !p.customerName?.toLowerCase().includes(filterClient.toLowerCase())) return false;
+      return true;
+    });
+  }, [history, dateFrom, dateTo, filterInvoice, filterClient]);
 
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3000);
   };
 
-  // Single payment
+  // Single payment modal
   const openPayModal = (bill: any) => {
     const due = Number(bill.total) - Number(bill.paidAmount || 0);
     setPayModal(bill);
@@ -94,6 +119,20 @@ export const BillingPage = () => {
     }
   };
 
+  // Select all invoices for a specific client
+  const selectClientInvoices = (clientBills: any[]) => {
+    setBulkMode(true);
+    const nextSelected = new Set(selected);
+    const nextAmounts = { ...bulkAmounts };
+    clientBills.forEach(b => {
+      nextSelected.add(b.id);
+      const due = Number(b.total) - Number(b.paidAmount || 0);
+      nextAmounts[b.id] = String(due);
+    });
+    setSelected(nextSelected);
+    setBulkAmounts(nextAmounts);
+  };
+
   // Bulk selection
   const toggleSelect = (id: number) => {
     const next = new Set(selected);
@@ -110,7 +149,6 @@ export const BillingPage = () => {
       setSelected(new Set());
     } else {
       setSelected(new Set(filteredBills.map(b => b.id)));
-      // Pre-fill bulk amounts with full due
       const amounts: Record<number, string> = {};
       filteredBills.forEach(b => {
         amounts[b.id] = String(Number(b.total) - Number(b.paidAmount || 0));
@@ -130,7 +168,7 @@ export const BillingPage = () => {
       })).filter(p => p.amount > 0);
 
       if (payments.length === 0) {
-        alert('Please enter amounts for selected bills');
+        alert('Please enter valid amounts for selected bills');
         setPayLoading(false);
         return;
       }
@@ -174,7 +212,7 @@ export const BillingPage = () => {
   return (
     <div className="page-container">
       {toast && <div className="toast">{toast}</div>}
-      <h2 className="page-title">💰 Billing</h2>
+      <h2 className="page-title">💰 Billing & Payment Collection</h2>
 
       {/* Summary Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '24px' }}>
@@ -183,8 +221,10 @@ export const BillingPage = () => {
           <p style={{ fontSize: '1.8rem', fontWeight: '700', color: '#ef4444' }}>৳{totalDue.toFixed(0)}</p>
         </div>
         <div className="glass-card" style={{ padding: '1.2rem', textAlign: 'center' }}>
-          <p className="text-secondary" style={{ fontSize: '0.85rem', marginBottom: '4px' }}>Pending Bills</p>
-          <p style={{ fontSize: '1.8rem', fontWeight: '700', color: '#eab308' }}>{filteredBills.length}</p>
+          <p className="text-secondary" style={{ fontSize: '0.85rem', marginBottom: '4px' }}>Pending Clients / Bills</p>
+          <p style={{ fontSize: '1.8rem', fontWeight: '700', color: '#eab308' }}>
+            {clientGroups.length} Clients ({filteredBills.length} Bills)
+          </p>
         </div>
         <div className="glass-card" style={{ padding: '1.2rem', textAlign: 'center' }}>
           <p className="text-secondary" style={{ fontSize: '0.85rem', marginBottom: '4px' }}>Total Collected</p>
@@ -192,10 +232,10 @@ export const BillingPage = () => {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+      {/* Main Tabs */}
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap', alignItems: 'center' }}>
         <button
-          onClick={() => { setTab('pending'); setDateFrom(''); setDateTo(''); setFilterInvoice(''); }}
+          onClick={() => { setTab('pending'); setDateFrom(''); setDateTo(''); setFilterClient(''); setFilterInvoice(''); }}
           className="btn-secondary"
           style={{
             background: tab === 'pending' ? 'linear-gradient(135deg, var(--accent-1), var(--accent-2))' : 'rgba(0,0,0,0.3)',
@@ -207,7 +247,7 @@ export const BillingPage = () => {
           📋 Pending Bills
         </button>
         <button
-          onClick={() => { setTab('history'); setDateFrom(''); setDateTo(''); setFilterInvoice(''); }}
+          onClick={() => { setTab('history'); setDateFrom(''); setDateTo(''); setFilterClient(''); setFilterInvoice(''); }}
           className="btn-secondary"
           style={{
             background: tab === 'history' ? 'linear-gradient(135deg, var(--accent-1), var(--accent-2))' : 'rgba(0,0,0,0.3)',
@@ -218,10 +258,61 @@ export const BillingPage = () => {
         >
           📊 Collection History
         </button>
+
+        {tab === 'pending' && (
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px' }}>
+            <button
+              onClick={() => setViewType('client')}
+              className="btn-secondary"
+              style={{
+                padding: '8px 16px', fontSize: '0.85rem',
+                background: viewType === 'client' ? 'var(--accent-1)' : 'rgba(0,0,0,0.3)',
+                color: viewType === 'client' ? '#0a0e1a' : 'var(--text-secondary)',
+                fontWeight: viewType === 'client' ? '700' : 'normal'
+              }}
+            >
+              👤 Client View
+            </button>
+            <button
+              onClick={() => setViewType('invoice')}
+              className="btn-secondary"
+              style={{
+                padding: '8px 16px', fontSize: '0.85rem',
+                background: viewType === 'invoice' ? 'var(--accent-1)' : 'rgba(0,0,0,0.3)',
+                color: viewType === 'invoice' ? '#0a0e1a' : 'var(--text-secondary)',
+                fontWeight: viewType === 'invoice' ? '700' : 'normal'
+              }}
+            >
+              📄 Invoice View
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Filters */}
+      {/* Filter Bar */}
       <div className="glass-card" style={{ padding: '1rem', marginBottom: '20px', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <div>
+          <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Client Name</label>
+          <input
+            type="text"
+            className="glass-input"
+            placeholder="Search Client..."
+            value={filterClient}
+            onChange={e => setFilterClient(e.target.value)}
+            style={{ padding: '8px', width: '150px' }}
+          />
+        </div>
+        <div>
+          <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Invoice #</label>
+          <input
+            type="text"
+            className="glass-input"
+            placeholder="e.g. 5"
+            value={filterInvoice}
+            onChange={e => setFilterInvoice(e.target.value)}
+            style={{ padding: '8px', width: '100px' }}
+          />
+        </div>
         <div>
           <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>From Date</label>
           <input type="date" className="glass-input" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={{ padding: '8px' }} />
@@ -230,13 +321,17 @@ export const BillingPage = () => {
           <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>To Date</label>
           <input type="date" className="glass-input" value={dateTo} onChange={e => setDateTo(e.target.value)} style={{ padding: '8px' }} />
         </div>
-        <div>
-          <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Invoice #</label>
-          <input type="text" className="glass-input" placeholder="e.g. 5" value={filterInvoice} onChange={e => setFilterInvoice(e.target.value)} style={{ padding: '8px', width: '100px' }} />
-        </div>
         {tab === 'pending' && (
           <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
-            <button className="btn-secondary" onClick={() => setBulkMode(!bulkMode)} style={{ padding: '8px 16px', fontSize: '0.85rem', background: bulkMode ? 'var(--accent-1)' : 'rgba(0,0,0,0.3)', color: bulkMode ? '#0a0e1a' : 'var(--text-secondary)' }}>
+            <button
+              className="btn-secondary"
+              onClick={() => setBulkMode(!bulkMode)}
+              style={{
+                padding: '8px 16px', fontSize: '0.85rem',
+                background: bulkMode ? 'var(--accent-1)' : 'rgba(0,0,0,0.3)',
+                color: bulkMode ? '#0a0e1a' : 'var(--text-secondary)'
+              }}
+            >
               {bulkMode ? '✕ Cancel Bulk' : '☑ Bulk Mode'}
             </button>
           </div>
@@ -253,7 +348,7 @@ export const BillingPage = () => {
                   {selected.size} invoice(s) selected — Total: ৳{Array.from(selected).reduce((s, id) => s + Number(bulkAmounts[id] || 0), 0).toFixed(0)}
                 </span>
                 <button className="btn-primary" onClick={handleBulkPay} disabled={payLoading} style={{ padding: '10px 24px' }}>
-                  {payLoading ? 'Processing...' : '💰 Collect All'}
+                  {payLoading ? 'Processing...' : '💰 Collect Selected'}
                 </button>
               </div>
             </div>
@@ -261,14 +356,123 @@ export const BillingPage = () => {
 
           {filteredBills.length === 0 ? (
             <div className="glass-card text-center" style={{ padding: '3rem' }}>
-              <p className="text-secondary" style={{ fontSize: '1.1rem' }}>🎉 No pending bills!</p>
+              <p className="text-secondary" style={{ fontSize: '1.1rem' }}>🎉 No pending bills found!</p>
+            </div>
+          ) : viewType === 'client' ? (
+            /* CLIENT-WISE VIEW */
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              {clientGroups.map(group => (
+                <div key={group.clientName} className="glass-card" style={{ padding: '1.5rem', borderLeft: '4px solid var(--accent-1)' }}>
+                  {/* Client Header */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '1rem', paddingBottom: '0.8rem', borderBottom: '1px solid var(--glass-border)' }}>
+                    <div>
+                      <h3 style={{ fontSize: '1.3rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        👤 Client: <span className="gradient-text">{group.clientName}</span>
+                      </h3>
+                      <p className="text-secondary" style={{ fontSize: '0.85rem', marginTop: '4px' }}>
+                        {group.bills.length} Pending Invoice(s)
+                      </p>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                      <div style={{ textAlign: 'right' }}>
+                        <p className="text-secondary" style={{ fontSize: '0.75rem' }}>Client Total Due</p>
+                        <p style={{ fontSize: '1.4rem', fontWeight: '800', color: '#ef4444' }}>৳{group.totalDue.toFixed(0)}</p>
+                      </div>
+                      <button
+                        className="btn-secondary"
+                        onClick={() => selectClientInvoices(group.bills)}
+                        style={{ padding: '8px 16px', fontSize: '0.85rem', background: 'rgba(20, 184, 166, 0.2)', color: 'var(--accent-1)', fontWeight: '600' }}
+                      >
+                        ☑ Select Client Bills
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Invoices List under Client */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {group.bills.map(bill => {
+                      const due = Number(bill.total) - Number(bill.paidAmount || 0);
+                      return (
+                        <div key={bill.id} style={{ background: 'rgba(0,0,0,0.25)', padding: '1rem', borderRadius: '10px', border: '1px solid var(--glass-border)' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            {bulkMode && (
+                              <input
+                                type="checkbox"
+                                checked={selected.has(bill.id)}
+                                onChange={() => {
+                                  toggleSelect(bill.id);
+                                  if (!bulkAmounts[bill.id]) {
+                                    setBulkAmounts({ ...bulkAmounts, [bill.id]: String(due) });
+                                  }
+                                }}
+                                style={{ width: '18px', height: '18px', accentColor: 'var(--accent-1)', flexShrink: 0 }}
+                              />
+                            )}
+                            <div style={{ flex: 1 }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                                <div>
+                                  <h4 style={{ fontSize: '1rem', fontWeight: '700' }}>
+                                    Invoice #{bill.id}
+                                  </h4>
+                                  <p className="text-secondary" style={{ fontSize: '0.8rem' }}>Date: {bill.createdAt?.split('T')[0]}</p>
+                                </div>
+                                <div>
+                                  {getStatusBadge(bill.billStatus)}
+                                </div>
+                              </div>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginTop: '10px' }}>
+                                <div>
+                                  <p className="text-secondary" style={{ fontSize: '0.75rem' }}>Total</p>
+                                  <p style={{ fontWeight: '600', fontSize: '0.95rem' }}>৳{Number(bill.total).toFixed(0)}</p>
+                                </div>
+                                <div>
+                                  <p className="text-secondary" style={{ fontSize: '0.75rem' }}>Paid</p>
+                                  <p style={{ fontWeight: '600', fontSize: '0.95rem', color: '#22c55e' }}>৳{Number(bill.paidAmount || 0).toFixed(0)}</p>
+                                </div>
+                                <div>
+                                  <p className="text-secondary" style={{ fontSize: '0.75rem' }}>Due</p>
+                                  <p style={{ fontWeight: '700', fontSize: '1.05rem', color: '#ef4444' }}>৳{due.toFixed(0)}</p>
+                                </div>
+                              </div>
+
+                              {bulkMode && selected.has(bill.id) ? (
+                                <div style={{ marginTop: '10px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                  <label className="text-secondary" style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}>Collect Amount:</label>
+                                  <input
+                                    type="number"
+                                    className="glass-input"
+                                    value={bulkAmounts[bill.id] || ''}
+                                    onChange={e => setBulkAmounts({ ...bulkAmounts, [bill.id]: e.target.value })}
+                                    style={{ padding: '6px 10px', width: '120px' }}
+                                    max={due}
+                                  />
+                                  <span className="text-secondary" style={{ fontSize: '0.75rem' }}>/ ৳{due.toFixed(0)}</span>
+                                </div>
+                              ) : !bulkMode && (
+                                <button
+                                  onClick={() => openPayModal(bill)}
+                                  className="btn-primary"
+                                  style={{ marginTop: '10px', padding: '6px 16px', fontSize: '0.85rem' }}
+                                >
+                                  💰 Collect Payment
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
           ) : (
+            /* INVOICE-WISE VIEW */
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {bulkMode && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0 8px' }}>
                   <input type="checkbox" checked={selected.size === filteredBills.length} onChange={selectAll} style={{ width: '18px', height: '18px', accentColor: 'var(--accent-1)' }} />
-                  <span className="text-secondary" style={{ fontSize: '0.85rem' }}>Select All</span>
+                  <span className="text-secondary" style={{ fontSize: '0.85rem' }}>Select All Invoices</span>
                 </div>
               )}
               {filteredBills.map(bill => {
@@ -292,10 +496,14 @@ export const BillingPage = () => {
                       <div style={{ flex: 1 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                           <div>
-                            <h4 style={{ fontSize: '1rem', marginBottom: '4px' }}>Invoice #{bill.id} — {bill.customerName}</h4>
-                            <p className="text-secondary" style={{ fontSize: '0.8rem' }}>{bill.createdAt?.split('T')[0]}</p>
+                            <h4 style={{ fontSize: '1.1rem', marginBottom: '2px', fontWeight: '700' }}>
+                              👤 Client: <span className="gradient-text">{bill.customerName}</span>
+                            </h4>
+                            <p className="text-secondary" style={{ fontSize: '0.85rem' }}>
+                              Invoice #{bill.id} • {bill.createdAt?.split('T')[0]}
+                            </p>
                           </div>
-                          <div style={{ textAlign: 'right' }}>
+                          <div>
                             {getStatusBadge(bill.billStatus)}
                           </div>
                         </div>
@@ -359,8 +567,8 @@ export const BillingPage = () => {
                 <thead>
                   <tr>
                     <th style={thStyle}>Date</th>
+                    <th style={thStyle}>Client Name</th>
                     <th style={thStyle}>Invoice #</th>
-                    <th style={thStyle}>Customer</th>
                     <th style={thStyle}>Amount</th>
                     <th style={thStyle}>Note</th>
                   </tr>
@@ -369,8 +577,8 @@ export const BillingPage = () => {
                   {filteredHistory.map(p => (
                     <tr key={p.id} className="glass-card" style={{ marginBottom: '4px' }}>
                       <td style={tdStyle}>{p.paymentDate?.split('T')[0]}</td>
-                      <td style={tdStyle}>#{p.orderId}</td>
-                      <td style={tdStyle}>{p.customerName}</td>
+                      <td style={{ ...tdStyle, fontWeight: '700' }}>👤 {p.customerName}</td>
+                      <td style={tdStyle}>Invoice #{p.orderId}</td>
                       <td style={{ ...tdStyle, fontWeight: '700', color: '#22c55e' }}>৳{Number(p.amount).toFixed(0)}</td>
                       <td style={{ ...tdStyle, color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{p.note || '—'}</td>
                     </tr>
@@ -390,8 +598,9 @@ export const BillingPage = () => {
           zIndex: 9999, backdropFilter: 'blur(4px)'
         }}>
           <div className="glass-card" style={{ padding: '2rem', maxWidth: '420px', width: '90%', animation: 'fadeIn 0.2s ease' }}>
-            <h3 style={{ marginBottom: '1rem', fontSize: '1.2rem' }}>💰 Collect Payment — Invoice #{payModal.id}</h3>
-            <p className="text-secondary" style={{ marginBottom: '4px' }}>Customer: <strong>{payModal.customerName}</strong></p>
+            <h3 style={{ marginBottom: '1rem', fontSize: '1.2rem' }}>💰 Collect Payment</h3>
+            <p style={{ marginBottom: '4px', fontSize: '1.05rem', fontWeight: '700' }}>👤 Client: {payModal.customerName}</p>
+            <p className="text-secondary" style={{ marginBottom: '12px', fontSize: '0.85rem' }}>Invoice #{payModal.id}</p>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', margin: '16px 0', padding: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '10px' }}>
               <div>
