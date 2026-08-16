@@ -8,10 +8,10 @@ import { CreateOrderPage } from './pages/CreateOrderPage';
 import { OrdersPage } from './pages/OrdersPage';
 import { InvoicePage } from './pages/InvoicePage';
 import { LoginPage } from './pages/LoginPage';
-import { RegisterPage } from './pages/RegisterPage';
 import { ProductsPage } from './pages/ProductsPage';
 import { BillingPage } from './pages/BillingPage';
-import { ClientsPage } from './pages/ClientsPage';
+import { UsersPage } from './pages/UsersPage';
+import { ChangePasswordPage } from './pages/ChangePasswordPage';
 import './index.css';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -34,22 +34,22 @@ function App() {
         <Navbar />
         <Routes>
           <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
           <Route path="/" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
+          <Route path="/change-password" element={<ProtectedRoute><ChangePasswordPage /></ProtectedRoute>} />
           <Route path="/products" element={<AdminRoute><ProductsPage /></AdminRoute>} />
           <Route
             path="/inventory"
             element={
-              <AdminRoute>
+              <ProtectedRoute>
                 <InventoryPage />
-              </AdminRoute>
+              </ProtectedRoute>
             }
           />
           <Route
-            path="/clients"
+            path="/users"
             element={
               <AdminRoute>
-                <ClientsPage />
+                <UsersPage />
               </AdminRoute>
             }
           />

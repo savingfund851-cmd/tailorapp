@@ -18,22 +18,12 @@ export const Navbar = () => {
           <Link to="/" className="nav-link" id="nav-home">{t.home}</Link>
           {auth.isAuthenticated && (
             <>
-              {auth.isAdmin ? (
-                <>
-                  <Link to="/products" className="nav-link" id="nav-products">Products</Link>
-                  <Link to="/create-order" className="nav-link" id="nav-create-order">+ New Order</Link>
-                  <Link to="/orders" className="nav-link" id="nav-orders">{t.orders}</Link>
-                  <Link to="/billing" className="nav-link" id="nav-billing">💰 Billing</Link>
-                  <Link to="/clients" className="nav-link" id="nav-clients">👥 Clients</Link>
-                  <Link to="/inventory" className="nav-link" id="nav-inventory">Inventory</Link>
-                </>
-              ) : (
-                <>
-                  <Link to="/create-order" className="nav-link" id="nav-create-order">+ New Order</Link>
-                  <Link to="/orders" className="nav-link" id="nav-orders">My Orders</Link>
-                  <Link to="/billing" className="nav-link" id="nav-billing">My Billing</Link>
-                </>
-              )}
+              {auth.hasPermission('products') && <Link to="/products" className="nav-link" id="nav-products">Products</Link>}
+              {auth.hasPermission('createOrder') && <Link to="/create-order" className="nav-link" id="nav-create-order">+ New Order</Link>}
+              {auth.hasPermission('orders') && <Link to="/orders" className="nav-link" id="nav-orders">{auth.isAdmin || auth.user?.userType === 'user' ? t.orders : 'My Orders'}</Link>}
+              {auth.hasPermission('billing') && <Link to="/billing" className="nav-link" id="nav-billing">{auth.isAdmin || auth.user?.userType === 'user' ? '💰 Billing' : 'My Billing'}</Link>}
+              {auth.isAdmin && <Link to="/users" className="nav-link" id="nav-users">👥 Users</Link>}
+              {auth.hasPermission('inventory') && <Link to="/inventory" className="nav-link" id="nav-inventory">Inventory</Link>}
             </>
           )}
         </div>
@@ -43,7 +33,8 @@ export const Navbar = () => {
           </button>
           {auth.isAuthenticated ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <span className="text-secondary" style={{ fontSize: '0.85rem' }}>👤 {auth.user?.username}</span>
+              <span className="text-secondary" style={{ fontSize: '0.85rem' }}>👤 {auth.user?.username} ({auth.isAdmin ? 'Admin' : auth.user?.userType})</span>
+              <Link to="/change-password" title="Change Password" style={{ fontSize: '1.2rem', cursor: 'pointer' }}>⚙️</Link>
               <button className="btn-primary" onClick={auth.logout} id="btn-logout" style={{ padding: '8px 16px', fontSize: '0.85rem' }}>{t.logout}</button>
             </div>
           ) : (

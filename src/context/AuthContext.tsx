@@ -4,6 +4,8 @@ type User = {
   id: number;
   username: string;
   role: string;
+  userType: string;
+  permissions?: Record<string, boolean>;
 };
 
 type AuthContextType = {
@@ -15,6 +17,7 @@ type AuthContextType = {
   toggleLang: () => void;
   isAuthenticated: boolean;
   isAdmin: boolean;
+  hasPermission: (perm: string) => boolean;
 };
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -49,6 +52,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     localStorage.setItem('lang', newLang);
   };
 
+  const isAdmin = user?.role === 'master';
+
+  const hasPermission = (perm: string) => {
+    if (isAdmin) return true;
+    if (!user || !user.permissions) return false;
+    return !!user.permissions[perm];
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -59,7 +70,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         logout,
         toggleLang,
         isAuthenticated: !!token,
-        isAdmin: user?.role === 'master',
+        isAdmin,
+        hasPermission,
       }}
     >
       {children}

@@ -42,7 +42,7 @@ export const CreateOrderPage = () => {
   useEffect(() => {
     if (auth?.token) {
       const p = [getProducts(auth.token), getInventory(auth.token)];
-      if (auth.isAdmin) {
+      if (auth.isAdmin || auth.user?.userType === 'user') {
         p.push(getClients(auth.token));
       }
       Promise.all(p)
@@ -136,7 +136,7 @@ export const CreateOrderPage = () => {
       .join('\n') + (extraMeasurements.trim() ? `\nNotes: ${extraMeasurements}` : '');
 
     const payload = {
-      customerName: auth?.isAdmin ? (selectedClientId ? clients.find(c => c.id === Number(selectedClientId))?.name : customerName) : auth?.user?.username,
+      customerName: (auth?.isAdmin || auth?.user?.userType === 'user') ? (selectedClientId ? clients.find(c => c.id === Number(selectedClientId))?.name : customerName) : auth?.user?.username,
       clientId: selectedClientId ? Number(selectedClientId) : undefined,
       productId: Number(selectedProductId),
       items: [{
@@ -171,7 +171,7 @@ export const CreateOrderPage = () => {
       <form onSubmit={handleSubmit} className="glass-card" style={{ padding: '2rem', maxWidth: '700px', margin: '0 auto' }}>
         {error && <p className="error-text mb-4">{error}</p>}
 
-        {auth?.isAdmin ? (
+        {(auth?.isAdmin || auth?.user?.userType === 'user') ? (
           <div className="mb-6">
             <label className="block mb-1 font-semibold">Select Client</label>
             <select className="glass-input w-full mb-2" value={selectedClientId} onChange={e => setSelectedClientId(e.target.value)}>
@@ -182,7 +182,7 @@ export const CreateOrderPage = () => {
               <input type="text" className="glass-input" value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="Walk-in Client Name" required />
             )}
             <div className="mt-2 text-right">
-              <Link to="/clients" className="text-sm text-accent hover-underline">+ Manage Clients</Link>
+              {(auth?.isAdmin) && <Link to="/users" className="text-sm text-accent hover-underline">+ Manage Users/Clients</Link>}
             </div>
           </div>
         ) : (

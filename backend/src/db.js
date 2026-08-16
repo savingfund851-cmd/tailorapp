@@ -15,8 +15,14 @@ async function init() {
       id SERIAL PRIMARY KEY,
       username VARCHAR(255) UNIQUE NOT NULL,
       password VARCHAR(255) NOT NULL,
-      role VARCHAR(50) NOT NULL DEFAULT 'master'
+      role VARCHAR(50) NOT NULL DEFAULT 'master',
+      userType VARCHAR(50) NOT NULL DEFAULT 'client',
+      permissions TEXT DEFAULT '{}'
     )`);
+
+    // Add new columns if they don't exist (migration for existing DBs)
+    try { await client.query(`ALTER TABLE users ADD COLUMN userType VARCHAR(50) NOT NULL DEFAULT 'client'`); } catch(e) {}
+    try { await client.query(`ALTER TABLE users ADD COLUMN permissions TEXT DEFAULT '{}'`); } catch(e) {}
 
     await client.query(`CREATE TABLE IF NOT EXISTS materials (
       id SERIAL PRIMARY KEY,
@@ -122,6 +128,17 @@ async function init() {
       // Column might already exist
     }
 
+    // Seed admin user if no users exist
+    const userRes = await client.query('SELECT COUNT(*) AS cnt FROM users');
+    if (parseInt(userRes.rows[0].cnt) === 0) {
+      const allPerms = JSON.stringify({ orders: true, billing: true, inventory: true, products: true, createOrder: true });
+      await client.query(
+        `INSERT INTO users (username, password, role, userType, permissions) VALUES ($1, $2, $3, $4, $5)`,
+        ['admin', 'admin123', 'master', 'admin', allPerms]
+      );
+      console.log('Seeded admin user (admin / admin123).');
+    }
+
     // Seed raw materials if empty
     const res = await client.query('SELECT COUNT(*) AS cnt FROM materials');
     if (parseInt(res.rows[0].cnt) === 0) {
@@ -165,7 +182,9 @@ const camelMap = {
   clothcolor: 'clothColor',
   orderitemid: 'orderItemId',
   paidamount: 'paidAmount',
-  paymentdate: 'paymentDate'
+  paymentdate: 'paymentDate',
+  usertype: 'userType',
+  clientid: 'clientId'
 };
 
 function mapRow(row) {

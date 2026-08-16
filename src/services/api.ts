@@ -34,8 +34,8 @@ export const apiPut = (path: string, body: any, token?: string) => request('PUT'
 export const loginApi = (username: string, password: string) =>
   apiPost('/login', { username, password });
 
-export const registerApi = (username: string, password: string) =>
-  apiPost('/register', { username, password });
+export const changePassword = (currentPassword: string, newPassword: string, token: string) =>
+  apiPut('/change-password', { currentPassword, newPassword }, token);
 
 // Inventory
 export const getInventory = (token?: string) => apiGet('/inventory', token);
@@ -71,9 +71,12 @@ export const bulkCollectPayment = (payments: { orderId: number; amount: number; 
   apiPost('/billing/bulk-pay', { payments }, token);
 export const getPaymentHistory = (token: string) => apiGet('/billing/history', token);
 
-// ================== CLIENTS ==================
+// ================== USERS & CLIENTS ==================
+export const getUsers = (token: string) => apiGet('/users', token);
+export const createUser = (data: { username: string; password?: string; userType: string; name: string; phone?: string; address?: string; permissions?: any }, token: string) =>
+  apiPost('/users', data, token);
+export const updateUser = (id: number, data: { name?: string; phone?: string; address?: string; permissions?: any; password?: string }, token: string) =>
+  apiPut(`/users/${id}`, data, token);
+
+// Legacy for order creation dropdown
 export const getClients = (token: string) => apiGet('/clients', token);
-export const createClient = (data: { name: string; phone?: string; address?: string; userId?: number }, token: string) =>
-  apiPost('/clients', data, token);
-export const updateClient = (id: number, data: { name: string; phone?: string; address?: string }, token: string) =>
-  apiPut(`/clients/${id}`, data, token);

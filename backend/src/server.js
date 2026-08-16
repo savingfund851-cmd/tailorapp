@@ -52,41 +52,45 @@ function requireAdmin(req, res, next) {
   }
 }
 
-// Register new user
-app.post('/api/register', async (req, res) => {
-  const { username, password } = req.body;
-  if (!username || !password) return res.status(400).json({ error: 'Missing fields' });
-  try {
-    const existing = await get('SELECT id FROM users WHERE username = ?', [username]);
-    if (existing) return res.status(409).json({ error: 'Username exists' });
-    
-    // First user is master, rest are clients
-    const userCount = await get('SELECT COUNT(*) AS cnt FROM users');
-    const role = userCount.cnt === 0 ? 'master' : 'client';
-    
-    const result = await run('INSERT INTO users (username, password, role) VALUES (?, ?, ?) RETURNING id', [username, password, role]);
-    
-    // If client, automatically create a client profile
-    if (role === 'client') {
-       await run('INSERT INTO clients (userId, name, phone, createdAt) VALUES (?, ?, ?, ?)', [result.lastID, username, '', new Date().toISOString()]);
+// Middleware to check specific permission
+function requirePermission(perm) {
+  return function (req, res, next) {
+    if (req.user && req.user.role === 'master') {
+      return next(); // master has all permissions
     }
-    
-    const token = jwt.sign({ userId: result.lastID, username, role }, JWT_SECRET, { expiresIn: '24h' });
-    res.status(201).json({ token, user: { id: result.lastID, username, role } });
+    const perms = req.user?.permissions || {};
+    if (perms[perm]) {
+      return next();
+    }
+    res.status(403).json({ error: `Permission denied. Requires: ${perm}` });
+  };
+}
+
+// Login
+app.post('/api/login', async (req, res) => {
+  const { username, password } = req.body;
+  try {
+    const user = await get('SELECT id, username, role, userType, permissions FROM users WHERE username = ? AND password = ?', [username, password]);
+    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+    let perms = {};
+    try { perms = JSON.parse(user.permissions || '{}'); } catch(e) {}
+    const token = jwt.sign({ userId: user.id, username: user.username, role: user.role, userType: user.userType, permissions: perms }, JWT_SECRET, { expiresIn: '24h' });
+    res.json({ token, user: { id: user.id, username: user.username, role: user.role, userType: user.userType, permissions: perms } });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
   }
 });
 
-// Login
-app.post('/api/login', async (req, res) => {
-  const { username, password } = req.body;
+// Change own password
+app.put('/api/change-password', authenticate, async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Missing fields' });
   try {
-    const user = await get('SELECT id, username, role FROM users WHERE username = ? AND password = ?', [username, password]);
-    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
-    const token = jwt.sign({ userId: user.id, username: user.username, role: user.role }, JWT_SECRET, { expiresIn: '24h' });
-    res.json({ token, user: { id: user.id, username: user.username, role: user.role } });
+    const user = await get('SELECT id FROM users WHERE id = ? AND password = ?', [req.user.userId, currentPassword]);
+    if (!user) return res.status(401).json({ error: 'Current password is incorrect' });
+    await run('UPDATE users SET password = ? WHERE id = ?', [newPassword, req.user.userId]);
+    res.json({ message: 'Password changed successfully' });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -112,7 +116,7 @@ app.get('/api/products', authenticate, async (req, res) => {
   }
 });
 
-app.post('/api/products', authenticate, requireAdmin, async (req, res) => {
+app.post('/api/products', authenticate, requirePermission('products'), async (req, res) => {
   const { name, category, basePrice, defaultMeasurements, materials, colors, sizeGroup, sizes, remarks } = req.body;
   try {
     const result = await run(
@@ -135,7 +139,7 @@ app.post('/api/products', authenticate, requireAdmin, async (req, res) => {
   }
 });
 
-app.delete('/api/products/:id', authenticate, requireAdmin, async (req, res) => {
+app.delete('/api/products/:id', authenticate, requirePermission('products'), async (req, res) => {
   const productId = parseInt(req.params.id);
   try {
     await run('DELETE FROM product_materials WHERE productId = ?', [productId]);
@@ -148,40 +152,87 @@ app.delete('/api/products/:id', authenticate, requireAdmin, async (req, res) => 
 });
 // --------------------
 
-// --- Clients API ---
-app.get('/api/clients', authenticate, requireAdmin, async (req, res) => {
+// --- Users API (Admin manages all users) ---
+app.get('/api/users', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const users = await all('SELECT u.id, u.username, u.role, u.userType, u.permissions, c.id as clientId, c.name, c.phone, c.address, c.createdAt FROM users u LEFT JOIN clients c ON c.userId = u.id WHERE u.role != ? ORDER BY u.id ASC', ['master']);
+    // Parse permissions JSON
+    const result = users.map(u => {
+      let perms = {};
+      try { perms = JSON.parse(u.permissions || '{}'); } catch(e) {}
+      return { ...u, permissions: perms };
+    });
+    res.json(result);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/users', authenticate, requireAdmin, async (req, res) => {
+  const { username, password, userType, name, phone, address, permissions } = req.body;
+  if (!username || !password || !userType) return res.status(400).json({ error: 'Username, password and user type are required' });
+  try {
+    const existing = await get('SELECT id FROM users WHERE username = ?', [username]);
+    if (existing) return res.status(409).json({ error: 'Username already exists' });
+
+    // Default permissions for 'user' type: only createOrder
+    let perms = permissions || {};
+    if (userType === 'user' && !permissions) {
+      perms = { orders: false, billing: false, inventory: false, products: false, createOrder: true };
+    } else if (userType === 'client') {
+      perms = { orders: true, billing: true, inventory: false, products: false, createOrder: true };
+    }
+
+    const permsStr = JSON.stringify(perms);
+    const result = await run(
+      'INSERT INTO users (username, password, role, userType, permissions) VALUES (?, ?, ?, ?, ?) RETURNING id',
+      [username, password, 'client', userType, permsStr]
+    );
+    const userId = result.lastID;
+
+    // Create client profile (for both types — links user to orders)
+    await run(
+      'INSERT INTO clients (userId, name, phone, address, createdAt) VALUES (?, ?, ?, ?, ?) RETURNING id',
+      [userId, name || username, phone || '', address || '', new Date().toISOString()]
+    );
+
+    res.status(201).json({ message: 'User created', id: userId });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.put('/api/users/:id', authenticate, requireAdmin, async (req, res) => {
+  const { name, phone, address, permissions, password } = req.body;
+  const userId = parseInt(req.params.id);
+  try {
+    // Update client profile
+    if (name !== undefined) {
+      await run('UPDATE clients SET name = ?, phone = ?, address = ? WHERE userId = ?', [name, phone || '', address || '', userId]);
+    }
+    // Update permissions
+    if (permissions !== undefined) {
+      const permsStr = JSON.stringify(permissions);
+      await run('UPDATE users SET permissions = ? WHERE id = ?', [permsStr, userId]);
+    }
+    // Admin can reset password
+    if (password) {
+      await run('UPDATE users SET password = ? WHERE id = ?', [password, userId]);
+    }
+    res.json({ message: 'User updated' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Keep /api/clients for backward compat (order creation dropdown)
+app.get('/api/clients', authenticate, async (req, res) => {
   try {
     const clients = await all('SELECT * FROM clients ORDER BY createdAt DESC');
     res.json(clients);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-app.post('/api/clients', authenticate, requireAdmin, async (req, res) => {
-  const { name, phone, address, userId } = req.body;
-  if (!name) return res.status(400).json({ error: 'Name is required' });
-  try {
-    const result = await run(
-      'INSERT INTO clients (userId, name, phone, address, createdAt) VALUES (?, ?, ?, ?, ?) RETURNING id',
-      [userId || null, name, phone || '', address || '', new Date().toISOString()]
-    );
-    res.status(201).json({ message: 'Client created', id: result.lastID });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-app.put('/api/clients/:id', authenticate, requireAdmin, async (req, res) => {
-  const { name, phone, address } = req.body;
-  try {
-    await run(
-      'UPDATE clients SET name = ?, phone = ?, address = ? WHERE id = ?',
-      [name, phone, address, req.params.id]
-    );
-    res.json({ message: 'Client updated' });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -199,7 +250,7 @@ app.get('/api/inventory', authenticate, async (req, res) => {
 });
 
 // Add or Update Stock Entry
-app.post('/api/inventory', authenticate, requireAdmin, async (req, res) => {
+app.post('/api/inventory', authenticate, requirePermission('inventory'), async (req, res) => {
   const { name, unit, stock } = req.body;
   if (!name || !unit || stock === undefined) {
     return res.status(400).json({ error: 'Missing required fields' });
@@ -345,7 +396,7 @@ app.get('/api/orders', authenticate, async (req, res) => {
 });
 
 // Advance workflow step
-app.put('/api/orders/:id/step', authenticate, requireAdmin, async (req, res) => {
+app.put('/api/orders/:id/step', authenticate, requirePermission('orders'), async (req, res) => {
   const orderId = parseInt(req.params.id);
   const { step } = req.body;
   try {
@@ -369,7 +420,7 @@ app.put('/api/orders/:id/step', authenticate, requireAdmin, async (req, res) => 
 });
 
 // Accept order (check stock, deduct, start Cutting)
-app.post('/api/orders/:id/accept', authenticate, requireAdmin, async (req, res) => {
+app.post('/api/orders/:id/accept', authenticate, requirePermission('orders'), async (req, res) => {
   const orderId = parseInt(req.params.id);
   try {
     const order = await get('SELECT * FROM orders WHERE id = ?', [orderId]);
@@ -401,7 +452,7 @@ app.post('/api/orders/:id/accept', authenticate, requireAdmin, async (req, res) 
 });
 
 // Reject order
-app.post('/api/orders/:id/reject', authenticate, requireAdmin, async (req, res) => {
+app.post('/api/orders/:id/reject', authenticate, requirePermission('orders'), async (req, res) => {
   const orderId = parseInt(req.params.id);
   try {
     const order = await get('SELECT * FROM orders WHERE id = ?', [orderId]);
@@ -521,7 +572,7 @@ app.get('/api/billing', authenticate, async (req, res) => {
 });
 
 // Record payment for a single order (full or partial)
-app.post('/api/billing/:orderId/pay', authenticate, requireAdmin, async (req, res) => {
+app.post('/api/billing/:orderId/pay', authenticate, requirePermission('billing'), async (req, res) => {
   const orderId = parseInt(req.params.orderId);
   const { amount, note } = req.body;
   if (!amount || Number(amount) <= 0) {
@@ -563,7 +614,7 @@ app.post('/api/billing/:orderId/pay', authenticate, requireAdmin, async (req, re
 });
 
 // Bulk payment — collect for multiple invoices at once (each can be partial)
-app.post('/api/billing/bulk-pay', authenticate, requireAdmin, async (req, res) => {
+app.post('/api/billing/bulk-pay', authenticate, requirePermission('billing'), async (req, res) => {
   const { payments: paymentsList } = req.body;
   // paymentsList = [{ orderId, amount, note }, ...]
   if (!Array.isArray(paymentsList) || paymentsList.length === 0) {

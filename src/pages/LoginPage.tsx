@@ -59,9 +59,6 @@ export const LoginPage = () => {
             {loading ? 'Logging in...' : t.login}
           </button>
         </form>
-        <p className="text-center mt-4 text-secondary">
-          Don't have an account? <Link to="/register" className="text-accent hover-underline">Register</Link>
-        </p>
       </div>
     </div>
   );

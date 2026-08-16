@@ -20,40 +20,32 @@ export const HomePage = () => {
         </p>
         <div className="hero-actions">
           {auth?.isAuthenticated ? (
-            auth.isAdmin ? (
-              <>
+            <>
+              {auth.hasPermission('createOrder') && (
                 <Link to="/create-order" className="btn-primary" id="home-create-order" style={{ padding: '14px 32px', fontSize: '1.05rem' }}>
                   ✂️ New Custom Order
                 </Link>
+              )}
+              {auth.hasPermission('orders') && (
                 <Link to="/orders" className="btn-secondary" id="home-view-orders" style={{ padding: '14px 32px', fontSize: '1.05rem' }}>
-                  📋 {t.orders}
+                  📋 {auth.isAdmin || auth.user?.userType === 'user' ? t.orders : 'My Orders'}
                 </Link>
-                <Link to="/clients" className="btn-secondary" id="home-clients" style={{ padding: '14px 32px', fontSize: '1.05rem' }}>
-                  👥 Clients
+              )}
+              {auth.isAdmin && (
+                <Link to="/users" className="btn-secondary" id="home-users" style={{ padding: '14px 32px', fontSize: '1.05rem' }}>
+                  👥 Users
                 </Link>
+              )}
+              {auth.hasPermission('inventory') && (
                 <Link to="/inventory" className="btn-secondary" id="home-inventory" style={{ padding: '14px 32px', fontSize: '1.05rem' }}>
                   📦 Inventory
                 </Link>
-              </>
-            ) : (
-              <>
-                <Link to="/create-order" className="btn-primary" id="home-create-order" style={{ padding: '14px 32px', fontSize: '1.05rem' }}>
-                  ✂️ Request Order
-                </Link>
-                <Link to="/orders" className="btn-secondary" id="home-view-orders" style={{ padding: '14px 32px', fontSize: '1.05rem' }}>
-                  📋 My Orders
-                </Link>
-              </>
-            )
-          ) : (
-            <>
-              <Link to="/register" className="btn-primary" id="home-register" style={{ padding: '14px 32px', fontSize: '1.05rem' }}>
-                Get Started
-              </Link>
-              <Link to="/login" className="btn-secondary" id="home-login" style={{ padding: '14px 32px', fontSize: '1.05rem' }}>
-                {t.login}
-              </Link>
+              )}
             </>
+          ) : (
+            <Link to="/login" className="btn-primary" id="home-login" style={{ padding: '14px 32px', fontSize: '1.05rem' }}>
+              {t.login}
+            </Link>
           )}
         </div>
 
