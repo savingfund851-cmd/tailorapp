@@ -11,15 +11,19 @@ export const OrdersPage = () => {
   const [orders, setOrders] = useState<any[]>([]);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<'All' | 'Pending Acceptance' | 'Processing' | 'Delivered'>('All');
 
   const fetchOrders = async () => {
     if (!auth?.token) return;
+    setLoading(true);
+    setError(null);
     try {
       const data = await getOrders(auth.token);
       setOrders(data);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load orders', err);
+      setError(err.message || 'Server is waking up or connection failed.');
     } finally {
       setLoading(false);
     }
@@ -83,7 +87,14 @@ export const OrdersPage = () => {
 
   return (
     <div className="page-container">
-      <h2 className="page-title">{t.orders}</h2>
+      {error && (
+        <div className="glass-card" style={{ padding: '1rem', marginBottom: '1.5rem', borderLeft: '4px solid #eab308', background: 'rgba(234, 179, 8, 0.1)' }}>
+          <p style={{ color: '#eab308', fontWeight: '600', marginBottom: '8px' }}>⚠️ Connection Note: Server may be waking up or session expired.</p>
+          <button className="btn-secondary" onClick={fetchOrders} style={{ padding: '6px 16px', fontSize: '0.85rem', background: 'var(--accent-1)', color: '#0a0e1a' }}>
+            🔄 Retry Loading Orders
+          </button>
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', overflowX: 'auto', paddingBottom: '10px' }}>
         {['All', 'Pending Acceptance', 'Processing', 'Delivered'].map(f => (
