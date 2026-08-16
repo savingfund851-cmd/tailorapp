@@ -3,6 +3,7 @@ import React, { createContext, useState, useEffect, ReactNode } from 'react';
 type User = {
   id: number;
   username: string;
+  role: string;
 };
 
 type AuthContextType = {
@@ -13,6 +14,7 @@ type AuthContextType = {
   logout: () => void;
   toggleLang: () => void;
   isAuthenticated: boolean;
+  isAdmin: boolean;
 };
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -57,6 +59,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         logout,
         toggleLang,
         isAuthenticated: !!token,
+        isAdmin: user?.role === 'master',
       }}
     >
       {children}

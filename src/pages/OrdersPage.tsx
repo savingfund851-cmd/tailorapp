@@ -146,11 +146,15 @@ export const OrdersPage = () => {
                   <div className="order-details mt-4" style={{ borderTop: '1px solid var(--glass-border)', paddingTop: '1rem' }}>
                     {order.status === 'Pending Acceptance' && (
                       <div className="mb-4 p-4 rounded-lg" style={{ background: 'rgba(239, 160, 11, 0.1)', border: '1px solid var(--warning)' }}>
-                        <p className="mb-2 font-semibold" style={{ color: 'var(--warning)' }}>⚠️ This order requires acceptance. Accepting will deduct inventory stock.</p>
-                        <div style={{ display: 'flex', gap: '10px' }}>
-                          <button onClick={() => handleAccept(order.id)} className="btn-primary" style={{ background: 'var(--success)', color: '#fff' }}>✅ Accept Order</button>
-                          <button onClick={() => handleReject(order.id)} className="btn-secondary" style={{ background: 'rgba(239,68,68,0.2)', color: 'var(--error)' }}>❌ Reject</button>
-                        </div>
+                        <p className="mb-2 font-semibold" style={{ color: 'var(--warning)' }}>
+                          {auth?.isAdmin ? '⚠️ This order requires acceptance. Accepting will deduct inventory stock.' : '⚠️ Your order is pending acceptance from the tailor.'}
+                        </p>
+                        {auth?.isAdmin && (
+                          <div style={{ display: 'flex', gap: '10px' }}>
+                            <button onClick={() => handleAccept(order.id)} className="btn-primary" style={{ background: 'var(--success)', color: '#fff' }}>✅ Accept Order</button>
+                            <button onClick={() => handleReject(order.id)} className="btn-secondary" style={{ background: 'rgba(239,68,68,0.2)', color: 'var(--error)' }}>❌ Reject</button>
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -173,7 +177,7 @@ export const OrdersPage = () => {
                       <WorkflowStepper
                         currentStep={stepIndex}
                         orderId={order.id}
-                        onAdvance={nextStep ? () => handleAdvance(order.id, nextStep) : undefined}
+                        onAdvance={auth?.isAdmin && nextStep ? () => handleAdvance(order.id, nextStep) : undefined}
                       />
                     )}
 

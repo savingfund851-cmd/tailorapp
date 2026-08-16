@@ -71,3 +71,9 @@ export const bulkCollectPayment = (payments: { orderId: number; amount: number; 
   apiPost('/billing/bulk-pay', { payments }, token);
 export const getPaymentHistory = (token: string) => apiGet('/billing/history', token);
 
+// ================== CLIENTS ==================
+export const getClients = (token: string) => apiGet('/clients', token);
+export const createClient = (data: { name: string; phone?: string; address?: string; userId?: number }, token: string) =>
+  apiPost('/clients', data, token);
+export const updateClient = (id: number, data: { name: string; phone?: string; address?: string }, token: string) =>
+  apiPut(`/clients/${id}`, data, token);

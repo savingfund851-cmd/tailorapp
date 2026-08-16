@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext';
-import { getProducts, getInventory, createCustomOrder } from '../services/api';
-import { useNavigate } from 'react-router-dom';
+import { getProducts, getInventory, createCustomOrder, getClients } from '../services/api';
+import { useNavigate, Link } from 'react-router-dom';
 
 interface MaterialRow {
   materialId: string;
@@ -15,11 +15,13 @@ export const CreateOrderPage = () => {
   const navigate = useNavigate();
   const [products, setProducts] = useState<any[]>([]);
   const [inventory, setInventory] = useState<any[]>([]);
+  const [clients, setClients] = useState<any[]>([]);
   const [toast, setToast] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   // Form state
+  const [selectedClientId, setSelectedClientId] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [selectedProductId, setSelectedProductId] = useState('');
   
@@ -39,14 +41,19 @@ export const CreateOrderPage = () => {
 
   useEffect(() => {
     if (auth?.token) {
-      Promise.all([getProducts(auth.token), getInventory(auth.token)])
-        .then(([prodData, invData]) => {
+      const p = [getProducts(auth.token), getInventory(auth.token)];
+      if (auth.isAdmin) {
+        p.push(getClients(auth.token));
+      }
+      Promise.all(p)
+        .then(([prodData, invData, clientsData]) => {
           setProducts(prodData);
           setInventory(invData);
+          if (clientsData) setClients(clientsData);
         })
         .catch(console.error);
     }
-  }, [auth?.token]);
+  }, [auth?.token, auth?.isAdmin]);
 
   const handleProductSelect = (pid: string) => {
     setSelectedProductId(pid);
@@ -129,7 +136,8 @@ export const CreateOrderPage = () => {
       .join('\n') + (extraMeasurements.trim() ? `\nNotes: ${extraMeasurements}` : '');
 
     const payload = {
-      customerName,
+      customerName: auth?.isAdmin ? (selectedClientId ? clients.find(c => c.id === Number(selectedClientId))?.name : customerName) : auth?.user?.username,
+      clientId: selectedClientId ? Number(selectedClientId) : undefined,
       productId: Number(selectedProductId),
       items: [{
         description,
@@ -163,10 +171,26 @@ export const CreateOrderPage = () => {
       <form onSubmit={handleSubmit} className="glass-card" style={{ padding: '2rem', maxWidth: '700px', margin: '0 auto' }}>
         {error && <p className="error-text mb-4">{error}</p>}
 
-        <div className="mb-6">
-          <label className="block mb-1 font-semibold">Client Name</label>
-          <input type="text" className="glass-input" required value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="e.g. Ahmed Hossain" />
-        </div>
+        {auth?.isAdmin ? (
+          <div className="mb-6">
+            <label className="block mb-1 font-semibold">Select Client</label>
+            <select className="glass-input w-full mb-2" value={selectedClientId} onChange={e => setSelectedClientId(e.target.value)}>
+              <option value="">-- One-time Walk-in (Enter name below) --</option>
+              {clients.map(c => <option key={c.id} value={c.id}>{c.name} {c.phone ? `(${c.phone})` : ''}</option>)}
+            </select>
+            {!selectedClientId && (
+              <input type="text" className="glass-input" value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="Walk-in Client Name" required />
+            )}
+            <div className="mt-2 text-right">
+              <Link to="/clients" className="text-sm text-accent hover-underline">+ Manage Clients</Link>
+            </div>
+          </div>
+        ) : (
+          <div className="mb-6">
+            <label className="block mb-1 font-semibold">Your Name</label>
+            <input type="text" className="glass-input" disabled value={auth?.user?.username || ''} />
+          </div>
+        )}
 
         <div className="mb-6 p-4 rounded-lg" style={{ background: 'rgba(20, 184, 166, 0.1)', border: '1px solid var(--accent-1)' }}>
           <label className="block mb-1 font-bold text-accent-1">Select Product Base</label>

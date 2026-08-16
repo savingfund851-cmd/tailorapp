@@ -20,20 +20,31 @@ export const HomePage = () => {
         </p>
         <div className="hero-actions">
           {auth?.isAuthenticated ? (
-            <>
-              <Link to="/create-order" className="btn-primary" id="home-create-order" style={{ padding: '14px 32px', fontSize: '1.05rem' }}>
-                ✂️ New Custom Order
-              </Link>
-              <Link to="/orders" className="btn-secondary" id="home-view-orders" style={{ padding: '14px 32px', fontSize: '1.05rem' }}>
-                📋 {t.orders}
-              </Link>
-              <Link to="/inventory" className="btn-secondary" id="home-inventory" style={{ padding: '14px 32px', fontSize: '1.05rem' }}>
-                📦 Inventory
-              </Link>
-              <Link to="/billing" className="btn-secondary" id="home-billing" style={{ padding: '14px 32px', fontSize: '1.05rem' }}>
-                💰 Billing
-              </Link>
-            </>
+            auth.isAdmin ? (
+              <>
+                <Link to="/create-order" className="btn-primary" id="home-create-order" style={{ padding: '14px 32px', fontSize: '1.05rem' }}>
+                  ✂️ New Custom Order
+                </Link>
+                <Link to="/orders" className="btn-secondary" id="home-view-orders" style={{ padding: '14px 32px', fontSize: '1.05rem' }}>
+                  📋 {t.orders}
+                </Link>
+                <Link to="/clients" className="btn-secondary" id="home-clients" style={{ padding: '14px 32px', fontSize: '1.05rem' }}>
+                  👥 Clients
+                </Link>
+                <Link to="/inventory" className="btn-secondary" id="home-inventory" style={{ padding: '14px 32px', fontSize: '1.05rem' }}>
+                  📦 Inventory
+                </Link>
+              </>
+            ) : (
+              <>
+                <Link to="/create-order" className="btn-primary" id="home-create-order" style={{ padding: '14px 32px', fontSize: '1.05rem' }}>
+                  ✂️ Request Order
+                </Link>
+                <Link to="/orders" className="btn-secondary" id="home-view-orders" style={{ padding: '14px 32px', fontSize: '1.05rem' }}>
+                  📋 My Orders
+                </Link>
+              </>
+            )
           ) : (
             <>
               <Link to="/register" className="btn-primary" id="home-register" style={{ padding: '14px 32px', fontSize: '1.05rem' }}>

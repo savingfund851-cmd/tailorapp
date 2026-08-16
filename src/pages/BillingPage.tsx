@@ -341,15 +341,20 @@ export const BillingPage = () => {
       {/* PENDING BILLS TAB */}
       {tab === 'pending' && (
         <>
-          {bulkMode && selected.size > 0 && (
+          {bulkMode && auth?.isAdmin && (
             <div className="glass-card" style={{ padding: '1rem', marginBottom: '16px', background: 'rgba(20, 184, 166, 0.08)', border: '1px solid var(--accent-1)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
                 <span style={{ fontWeight: '600', color: 'var(--accent-1)' }}>
                   {selected.size} invoice(s) selected — Total: ৳{Array.from(selected).reduce((s, id) => s + Number(bulkAmounts[id] || 0), 0).toFixed(0)}
                 </span>
-                <button className="btn-primary" onClick={handleBulkPay} disabled={payLoading} style={{ padding: '10px 24px' }}>
-                  {payLoading ? 'Processing...' : '💰 Collect Selected'}
-                </button>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                  <button className="btn-secondary" onClick={selectAll} style={{ padding: '10px 20px' }}>
+                    {selected.size === filteredBills.length ? 'Deselect All' : 'Select All'}
+                  </button>
+                  <button className="btn-primary" onClick={handleBulkPay} disabled={payLoading || selected.size === 0} style={{ padding: '10px 24px' }}>
+                    {payLoading ? 'Processing...' : '💰 Collect Selected'}
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -373,19 +378,21 @@ export const BillingPage = () => {
                         {group.bills.length} Pending Invoice(s)
                       </p>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                      <div style={{ textAlign: 'right' }}>
-                        <p className="text-secondary" style={{ fontSize: '0.75rem' }}>Client Total Due</p>
-                        <p style={{ fontSize: '1.4rem', fontWeight: '800', color: '#ef4444' }}>৳{group.totalDue.toFixed(0)}</p>
-                      </div>
-                      <button
-                        className="btn-secondary"
-                        onClick={() => selectClientInvoices(group.bills)}
-                        style={{ padding: '8px 16px', fontSize: '0.85rem', background: 'rgba(20, 184, 166, 0.2)', color: 'var(--accent-1)', fontWeight: '600' }}
-                      >
-                        ☑ Select Client Bills
-                      </button>
-                    </div>
+                      {auth?.isAdmin && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                          <div style={{ textAlign: 'right' }}>
+                            <p className="text-secondary" style={{ fontSize: '0.75rem' }}>Client Total Due</p>
+                            <p style={{ fontSize: '1.4rem', fontWeight: '800', color: '#ef4444' }}>৳{group.totalDue.toFixed(0)}</p>
+                          </div>
+                          <button
+                            className="btn-secondary"
+                            onClick={() => selectClientInvoices(group.bills)}
+                            style={{ padding: '8px 16px', fontSize: '0.85rem', background: 'rgba(20, 184, 166, 0.2)', color: 'var(--accent-1)', fontWeight: '600' }}
+                          >
+                            ☑ Select Client Bills
+                          </button>
+                        </div>
+                      )}
                   </div>
 
                   {/* Invoices List under Client */}
@@ -435,27 +442,29 @@ export const BillingPage = () => {
                                 </div>
                               </div>
 
-                              {bulkMode && selected.has(bill.id) ? (
-                                <div style={{ marginTop: '10px', display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                  <label className="text-secondary" style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}>Collect Amount:</label>
-                                  <input
-                                    type="number"
-                                    className="glass-input"
-                                    value={bulkAmounts[bill.id] || ''}
-                                    onChange={e => setBulkAmounts({ ...bulkAmounts, [bill.id]: e.target.value })}
-                                    style={{ padding: '6px 10px', width: '120px' }}
-                                    max={due}
-                                  />
-                                  <span className="text-secondary" style={{ fontSize: '0.75rem' }}>/ ৳{due.toFixed(0)}</span>
-                                </div>
-                              ) : !bulkMode && (
-                                <button
-                                  onClick={() => openPayModal(bill)}
-                                  className="btn-primary"
-                                  style={{ marginTop: '10px', padding: '6px 16px', fontSize: '0.85rem' }}
-                                >
-                                  💰 Collect Payment
-                                </button>
+                              {auth?.isAdmin && (
+                                bulkMode && selected.has(bill.id) ? (
+                                  <div style={{ marginTop: '10px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                    <label className="text-secondary" style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}>Collect Amount:</label>
+                                    <input
+                                      type="number"
+                                      className="glass-input"
+                                      value={bulkAmounts[bill.id] || ''}
+                                      onChange={e => setBulkAmounts({ ...bulkAmounts, [bill.id]: e.target.value })}
+                                      style={{ padding: '6px 10px', width: '120px' }}
+                                      max={due}
+                                    />
+                                    <span className="text-secondary" style={{ fontSize: '0.75rem' }}>/ ৳{due.toFixed(0)}</span>
+                                  </div>
+                                ) : !bulkMode && (
+                                  <button
+                                    onClick={() => openPayModal(bill)}
+                                    className="btn-primary"
+                                    style={{ marginTop: '10px', padding: '6px 16px', fontSize: '0.85rem' }}
+                                  >
+                                    💰 Collect Payment
+                                  </button>
+                                )
                               )}
                             </div>
                           </div>
@@ -522,27 +531,29 @@ export const BillingPage = () => {
                           </div>
                         </div>
 
-                        {bulkMode && selected.has(bill.id) ? (
-                          <div style={{ marginTop: '12px', display: 'flex', gap: '8px', alignItems: 'center' }}>
-                            <label className="text-secondary" style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}>Amount:</label>
-                            <input
-                              type="number"
-                              className="glass-input"
-                              value={bulkAmounts[bill.id] || ''}
-                              onChange={e => setBulkAmounts({ ...bulkAmounts, [bill.id]: e.target.value })}
-                              style={{ padding: '6px 10px', width: '120px' }}
-                              max={due}
-                            />
-                            <span className="text-secondary" style={{ fontSize: '0.75rem' }}>/ ৳{due.toFixed(0)}</span>
-                          </div>
-                        ) : !bulkMode && (
-                          <button
-                            onClick={() => openPayModal(bill)}
-                            className="btn-primary"
-                            style={{ marginTop: '12px', padding: '8px 20px', fontSize: '0.9rem' }}
-                          >
-                            💰 Collect Payment
-                          </button>
+                        {auth?.isAdmin && (
+                          bulkMode && selected.has(bill.id) ? (
+                            <div style={{ marginTop: '12px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                              <label className="text-secondary" style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}>Amount:</label>
+                              <input
+                                type="number"
+                                className="glass-input"
+                                value={bulkAmounts[bill.id] || ''}
+                                onChange={e => setBulkAmounts({ ...bulkAmounts, [bill.id]: e.target.value })}
+                                style={{ padding: '6px 10px', width: '120px' }}
+                                max={due}
+                              />
+                              <span className="text-secondary" style={{ fontSize: '0.75rem' }}>/ ৳{due.toFixed(0)}</span>
+                            </div>
+                          ) : !bulkMode && (
+                            <button
+                              onClick={() => openPayModal(bill)}
+                              className="btn-primary"
+                              style={{ marginTop: '12px', padding: '8px 20px', fontSize: '0.9rem' }}
+                            >
+                              💰 Collect Payment
+                            </button>
+                          )
                         )}
                       </div>
                     </div>

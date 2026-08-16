@@ -11,11 +11,19 @@ import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { ProductsPage } from './pages/ProductsPage';
 import { BillingPage } from './pages/BillingPage';
+import { ClientsPage } from './pages/ClientsPage';
 import './index.css';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const auth = useContext(AuthContext);
   if (!auth?.token) return <Navigate to="/login" />;
+  return <>{children}</>;
+};
+
+const AdminRoute = ({ children }: { children: React.ReactNode }) => {
+  const auth = useContext(AuthContext);
+  if (!auth?.token) return <Navigate to="/login" />;
+  if (!auth?.isAdmin) return <Navigate to="/" />;
   return <>{children}</>;
 };
 
@@ -28,13 +36,21 @@ function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
-          <Route path="/products" element={<ProtectedRoute><ProductsPage /></ProtectedRoute>} />
+          <Route path="/products" element={<AdminRoute><ProductsPage /></AdminRoute>} />
           <Route
             path="/inventory"
             element={
-              <ProtectedRoute>
+              <AdminRoute>
                 <InventoryPage />
-              </ProtectedRoute>
+              </AdminRoute>
+            }
+          />
+          <Route
+            path="/clients"
+            element={
+              <AdminRoute>
+                <ClientsPage />
+              </AdminRoute>
             }
           />
           <Route

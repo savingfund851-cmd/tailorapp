@@ -58,6 +58,21 @@ async function init() {
       // Column might already exist
     }
 
+    await client.query(`CREATE TABLE IF NOT EXISTS clients (
+      id SERIAL PRIMARY KEY,
+      userId INTEGER REFERENCES users(id),
+      name VARCHAR(255) NOT NULL,
+      phone VARCHAR(50),
+      address TEXT,
+      createdAt VARCHAR(255) NOT NULL
+    )`);
+
+    try {
+      await client.query(`ALTER TABLE orders ADD COLUMN clientId INTEGER REFERENCES clients(id)`);
+    } catch (e) {
+      // Column might already exist
+    }
+
     // Add new product columns
     try {
       await client.query(`ALTER TABLE products ADD COLUMN colors TEXT`);

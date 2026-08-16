@@ -43,17 +43,36 @@ app.get('/api/status', async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 });
+// Middleware to verify JWT and check if Admin
+function requireAdmin(req, res, next) {
+  if (req.user && req.user.role === 'master') {
+    next();
+  } else {
+    res.status(403).json({ error: 'Admin access required' });
+  }
+}
 
-// Register new user (plain‑text password for simplicity)
+// Register new user
 app.post('/api/register', async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) return res.status(400).json({ error: 'Missing fields' });
   try {
     const existing = await get('SELECT id FROM users WHERE username = ?', [username]);
     if (existing) return res.status(409).json({ error: 'Username exists' });
-    const result = await run('INSERT INTO users (username, password) VALUES (?, ?) RETURNING id', [username, password]);
-    const token = jwt.sign({ userId: result.lastID, username }, JWT_SECRET, { expiresIn: '24h' });
-    res.status(201).json({ token, user: { id: result.lastID, username } });
+    
+    // First user is master, rest are clients
+    const userCount = await get('SELECT COUNT(*) AS cnt FROM users');
+    const role = userCount.cnt === 0 ? 'master' : 'client';
+    
+    const result = await run('INSERT INTO users (username, password, role) VALUES (?, ?, ?) RETURNING id', [username, password, role]);
+    
+    // If client, automatically create a client profile
+    if (role === 'client') {
+       await run('INSERT INTO clients (userId, name, phone, createdAt) VALUES (?, ?, ?, ?)', [result.lastID, username, '', new Date().toISOString()]);
+    }
+    
+    const token = jwt.sign({ userId: result.lastID, username, role }, JWT_SECRET, { expiresIn: '24h' });
+    res.status(201).json({ token, user: { id: result.lastID, username, role } });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -64,10 +83,10 @@ app.post('/api/register', async (req, res) => {
 app.post('/api/login', async (req, res) => {
   const { username, password } = req.body;
   try {
-    const user = await get('SELECT id, username FROM users WHERE username = ? AND password = ?', [username, password]);
+    const user = await get('SELECT id, username, role FROM users WHERE username = ? AND password = ?', [username, password]);
     if (!user) return res.status(401).json({ error: 'Invalid credentials' });
-    const token = jwt.sign({ userId: user.id, username: user.username }, JWT_SECRET, { expiresIn: '24h' });
-    res.json({ token, user: { id: user.id, username: user.username } });
+    const token = jwt.sign({ userId: user.id, username: user.username, role: user.role }, JWT_SECRET, { expiresIn: '24h' });
+    res.json({ token, user: { id: user.id, username: user.username, role: user.role } });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -93,7 +112,7 @@ app.get('/api/products', authenticate, async (req, res) => {
   }
 });
 
-app.post('/api/products', authenticate, async (req, res) => {
+app.post('/api/products', authenticate, requireAdmin, async (req, res) => {
   const { name, category, basePrice, defaultMeasurements, materials, colors, sizeGroup, sizes, remarks } = req.body;
   try {
     const result = await run(
@@ -116,7 +135,7 @@ app.post('/api/products', authenticate, async (req, res) => {
   }
 });
 
-app.delete('/api/products/:id', authenticate, async (req, res) => {
+app.delete('/api/products/:id', authenticate, requireAdmin, async (req, res) => {
   const productId = parseInt(req.params.id);
   try {
     await run('DELETE FROM product_materials WHERE productId = ?', [productId]);
@@ -129,7 +148,46 @@ app.delete('/api/products/:id', authenticate, async (req, res) => {
 });
 // --------------------
 
-// Inventory
+// --- Clients API ---
+app.get('/api/clients', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const clients = await all('SELECT * FROM clients ORDER BY createdAt DESC');
+    res.json(clients);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/clients', authenticate, requireAdmin, async (req, res) => {
+  const { name, phone, address, userId } = req.body;
+  if (!name) return res.status(400).json({ error: 'Name is required' });
+  try {
+    const result = await run(
+      'INSERT INTO clients (userId, name, phone, address, createdAt) VALUES (?, ?, ?, ?, ?) RETURNING id',
+      [userId || null, name, phone || '', address || '', new Date().toISOString()]
+    );
+    res.status(201).json({ message: 'Client created', id: result.lastID });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.put('/api/clients/:id', authenticate, requireAdmin, async (req, res) => {
+  const { name, phone, address } = req.body;
+  try {
+    await run(
+      'UPDATE clients SET name = ?, phone = ?, address = ? WHERE id = ?',
+      [name, phone, address, req.params.id]
+    );
+    res.json({ message: 'Client updated' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+// --------------------
 app.get('/api/inventory', authenticate, async (req, res) => {
   try {
     const materials = await all('SELECT * FROM materials');
@@ -141,7 +199,7 @@ app.get('/api/inventory', authenticate, async (req, res) => {
 });
 
 // Add or Update Stock Entry
-app.post('/api/inventory', authenticate, async (req, res) => {
+app.post('/api/inventory', authenticate, requireAdmin, async (req, res) => {
   const { name, unit, stock } = req.body;
   if (!name || !unit || stock === undefined) {
     return res.status(400).json({ error: 'Missing required fields' });
@@ -186,7 +244,7 @@ async function validateAndDeductStock(required) {
 
 // Create custom order
 app.post('/api/orders/custom', authenticate, async (req, res) => {
-  const { customerName, items } = req.body;
+  const { customerName, clientId, items } = req.body; // clientId can be provided
   if (!customerName || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'Invalid payload' });
   }
@@ -205,12 +263,19 @@ app.post('/api/orders/custom', authenticate, async (req, res) => {
   let total = 0;
   for (const item of items) total += Number(item.price);
 
+  let finalClientId = clientId;
+  if (req.user.role === 'client' && !finalClientId) {
+      // Find client record for this user
+      const clientRecord = await get('SELECT id FROM clients WHERE userId = ?', [req.user.userId]);
+      if (clientRecord) finalClientId = clientRecord.id;
+  }
+
   // Insert order
   let orderResult;
   try {
     orderResult = await run(
-      'INSERT INTO orders (userId, productId, customerName, total, status, createdAt) VALUES (?, ?, ?, ?, ?, ?) RETURNING id',
-      [req.user.userId, req.body.productId || null, customerName, total, 'Pending Acceptance', new Date().toISOString()]
+      'INSERT INTO orders (userId, clientId, productId, customerName, total, status, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id',
+      [req.user.userId, finalClientId || null, req.body.productId || null, customerName, total, 'Pending Acceptance', new Date().toISOString()]
     );
   } catch (err) {
     console.error(err);
@@ -243,10 +308,21 @@ app.post('/api/orders/custom', authenticate, async (req, res) => {
   res.status(201).json({ orderId, message: 'Custom order created successfully. Pending Acceptance.' });
 });
 
-// Get user's orders with items and workflow
+// Get orders (Admin sees all, Client sees own)
 app.get('/api/orders', authenticate, async (req, res) => {
   try {
-    const orders = await all('SELECT * FROM orders WHERE userId = ?', [req.user.userId]);
+    let orders;
+    if (req.user.role === 'master') {
+       orders = await all('SELECT * FROM orders ORDER BY createdAt DESC');
+    } else {
+       // Find client record for this user
+       const clientRecord = await get('SELECT id FROM clients WHERE userId = ?', [req.user.userId]);
+       if (clientRecord) {
+           orders = await all('SELECT * FROM orders WHERE clientId = ? ORDER BY createdAt DESC', [clientRecord.id]);
+       } else {
+           orders = await all('SELECT * FROM orders WHERE userId = ? ORDER BY createdAt DESC', [req.user.userId]);
+       }
+    }
     const detailed = [];
     for (const order of orders) {
       const items = await all('SELECT * FROM order_items WHERE orderId = ?', [order.id]);
@@ -269,7 +345,7 @@ app.get('/api/orders', authenticate, async (req, res) => {
 });
 
 // Advance workflow step
-app.put('/api/orders/:id/step', authenticate, async (req, res) => {
+app.put('/api/orders/:id/step', authenticate, requireAdmin, async (req, res) => {
   const orderId = parseInt(req.params.id);
   const { step } = req.body;
   try {
@@ -293,7 +369,7 @@ app.put('/api/orders/:id/step', authenticate, async (req, res) => {
 });
 
 // Accept order (check stock, deduct, start Cutting)
-app.post('/api/orders/:id/accept', authenticate, async (req, res) => {
+app.post('/api/orders/:id/accept', authenticate, requireAdmin, async (req, res) => {
   const orderId = parseInt(req.params.id);
   try {
     const order = await get('SELECT * FROM orders WHERE id = ?', [orderId]);
@@ -325,7 +401,7 @@ app.post('/api/orders/:id/accept', authenticate, async (req, res) => {
 });
 
 // Reject order
-app.post('/api/orders/:id/reject', authenticate, async (req, res) => {
+app.post('/api/orders/:id/reject', authenticate, requireAdmin, async (req, res) => {
   const orderId = parseInt(req.params.id);
   try {
     const order = await get('SELECT * FROM orders WHERE id = ?', [orderId]);
@@ -344,7 +420,18 @@ app.post('/api/orders/:id/reject', authenticate, async (req, res) => {
 app.get('/api/orders/:id/invoice', authenticate, async (req, res) => {
   const orderId = parseInt(req.params.id);
   try {
-    const order = await get('SELECT * FROM orders WHERE id = ? AND userId = ?', [orderId, req.user.userId]);
+    let order;
+    if (req.user.role === 'master') {
+      order = await get('SELECT * FROM orders WHERE id = ?', [orderId]);
+    } else {
+      const clientRecord = await get('SELECT id FROM clients WHERE userId = ?', [req.user.userId]);
+      if (clientRecord) {
+        order = await get('SELECT * FROM orders WHERE id = ? AND clientId = ?', [orderId, clientRecord.id]);
+      } else {
+        order = await get('SELECT * FROM orders WHERE id = ? AND userId = ?', [orderId, req.user.userId]);
+      }
+    }
+    
     if (!order) return res.status(404).json({ error: 'Order not found' });
     const items = await all('SELECT * FROM order_items WHERE orderId = ?', [orderId]);
 
@@ -400,10 +487,26 @@ app.get('/api/orders/:id/invoice', authenticate, async (req, res) => {
 // Get all delivered orders with billing info
 app.get('/api/billing', authenticate, async (req, res) => {
   try {
-    const orders = await all(
-      'SELECT id, customerName, total, paidAmount, status, createdAt FROM orders WHERE userId = ? AND status IN (?, ?) ORDER BY createdAt DESC',
-      [req.user.userId, 'Delivered', 'Paid']
-    );
+    let orders;
+    if (req.user.role === 'master') {
+      orders = await all(
+        'SELECT id, clientId, customerName, total, paidAmount, status, createdAt FROM orders WHERE status IN (?, ?) ORDER BY createdAt DESC',
+        ['Delivered', 'Paid']
+      );
+    } else {
+      const clientRecord = await get('SELECT id FROM clients WHERE userId = ?', [req.user.userId]);
+      if (clientRecord) {
+        orders = await all(
+          'SELECT id, clientId, customerName, total, paidAmount, status, createdAt FROM orders WHERE clientId = ? AND status IN (?, ?) ORDER BY createdAt DESC',
+          [clientRecord.id, 'Delivered', 'Paid']
+        );
+      } else {
+        orders = await all(
+          'SELECT id, clientId, customerName, total, paidAmount, status, createdAt FROM orders WHERE userId = ? AND status IN (?, ?) ORDER BY createdAt DESC',
+          [req.user.userId, 'Delivered', 'Paid']
+        );
+      }
+    }
     const billing = orders.map(o => ({
       ...o,
       due: Number(o.total) - Number(o.paidAmount || 0),
@@ -418,14 +521,14 @@ app.get('/api/billing', authenticate, async (req, res) => {
 });
 
 // Record payment for a single order (full or partial)
-app.post('/api/billing/:orderId/pay', authenticate, async (req, res) => {
+app.post('/api/billing/:orderId/pay', authenticate, requireAdmin, async (req, res) => {
   const orderId = parseInt(req.params.orderId);
   const { amount, note } = req.body;
   if (!amount || Number(amount) <= 0) {
     return res.status(400).json({ error: 'Invalid payment amount' });
   }
   try {
-    const order = await get('SELECT * FROM orders WHERE id = ? AND userId = ?', [orderId, req.user.userId]);
+    const order = await get('SELECT * FROM orders WHERE id = ?', [orderId]);
     if (!order) return res.status(404).json({ error: 'Order not found' });
 
     const currentPaid = Number(order.paidAmount || 0);
@@ -460,7 +563,7 @@ app.post('/api/billing/:orderId/pay', authenticate, async (req, res) => {
 });
 
 // Bulk payment — collect for multiple invoices at once (each can be partial)
-app.post('/api/billing/bulk-pay', authenticate, async (req, res) => {
+app.post('/api/billing/bulk-pay', authenticate, requireAdmin, async (req, res) => {
   const { payments: paymentsList } = req.body;
   // paymentsList = [{ orderId, amount, note }, ...]
   if (!Array.isArray(paymentsList) || paymentsList.length === 0) {

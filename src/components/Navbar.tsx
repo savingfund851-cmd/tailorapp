@@ -18,11 +18,22 @@ export const Navbar = () => {
           <Link to="/" className="nav-link" id="nav-home">{t.home}</Link>
           {auth.isAuthenticated && (
             <>
-              <Link to="/products" className="nav-link" id="nav-products">Products</Link>
-              <Link to="/create-order" className="nav-link" id="nav-create-order">+ New Order</Link>
-              <Link to="/orders" className="nav-link" id="nav-orders">{t.orders}</Link>
-              <Link to="/billing" className="nav-link" id="nav-billing">💰 Billing</Link>
-              <Link to="/inventory" className="nav-link" id="nav-inventory">Inventory</Link>
+              {auth.isAdmin ? (
+                <>
+                  <Link to="/products" className="nav-link" id="nav-products">Products</Link>
+                  <Link to="/create-order" className="nav-link" id="nav-create-order">+ New Order</Link>
+                  <Link to="/orders" className="nav-link" id="nav-orders">{t.orders}</Link>
+                  <Link to="/billing" className="nav-link" id="nav-billing">💰 Billing</Link>
+                  <Link to="/clients" className="nav-link" id="nav-clients">👥 Clients</Link>
+                  <Link to="/inventory" className="nav-link" id="nav-inventory">Inventory</Link>
+                </>
+              ) : (
+                <>
+                  <Link to="/create-order" className="nav-link" id="nav-create-order">+ New Order</Link>
+                  <Link to="/orders" className="nav-link" id="nav-orders">My Orders</Link>
+                  <Link to="/billing" className="nav-link" id="nav-billing">My Billing</Link>
+                </>
+              )}
             </>
           )}
         </div>
