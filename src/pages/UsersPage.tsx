@@ -21,6 +21,7 @@ export const UsersPage = () => {
   const [error, setError] = useState('');
   
   const [showAddForm, setShowAddForm] = useState(false);
+  const [editingUserId, setEditingUserId] = useState<number | null>(null);
   const [newUser, setNewUser] = useState({ username: '', password: '', userType: 'client', name: '', phone: '', address: '', permissions: { orders: false, billing: false, inventory: false, products: false, createOrder: true } });
   const [submitLoading, setSubmitLoading] = useState(false);
 
@@ -45,7 +46,8 @@ export const UsersPage = () => {
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!auth?.token) return;
-    if (!newUser.username || !newUser.password) return;
+    if (!newUser.username) return;
+    if (!editingUserId && !newUser.password) return;
     
     setSubmitLoading(true);
     try {
@@ -55,9 +57,15 @@ export const UsersPage = () => {
         payload.permissions = { orders: true, billing: true, inventory: false, products: false, createOrder: true };
       }
       
-      await createUser(payload, auth.token);
+      if (editingUserId) {
+        await updateUser(editingUserId, payload, auth.token);
+      } else {
+        await createUser(payload, auth.token);
+      }
+      
       setNewUser({ username: '', password: '', userType: 'client', name: '', phone: '', address: '', permissions: { orders: false, billing: false, inventory: false, products: false, createOrder: true } });
       setShowAddForm(false);
+      setEditingUserId(null);
       fetchUsers();
     } catch (err: any) {
       setError(err.message || 'Failed to create user');
@@ -76,11 +84,33 @@ export const UsersPage = () => {
     }));
   };
 
+  const handleEditClick = (user: User) => {
+    setNewUser({
+      username: user.username,
+      password: '', // Leave blank unless they want to change
+      userType: user.userType,
+      name: user.name || '',
+      phone: user.phone || '',
+      address: user.address || '',
+      permissions: user.permissions || { orders: false, billing: false, inventory: false, products: false, createOrder: true }
+    });
+    setEditingUserId(user.id);
+    setShowAddForm(true);
+  };
+
   return (
     <div className="page-container">
       <div className="flex justify-between items-center mb-6">
         <h1 className="page-title mb-0">👥 Users Management</h1>
-        <button className="btn-primary" onClick={() => setShowAddForm(!showAddForm)}>
+        <button className="btn-primary" onClick={() => {
+          if (showAddForm) {
+            setShowAddForm(false);
+            setEditingUserId(null);
+            setNewUser({ username: '', password: '', userType: 'client', name: '', phone: '', address: '', permissions: { orders: false, billing: false, inventory: false, products: false, createOrder: true } });
+          } else {
+            setShowAddForm(true);
+          }
+        }}>
           {showAddForm ? 'Cancel' : '+ New User'}
         </button>
       </div>
@@ -89,16 +119,16 @@ export const UsersPage = () => {
 
       {showAddForm && (
         <form onSubmit={handleCreateUser} className="glass-card mb-6" style={{ padding: '1.5rem' }}>
-          <h2 className="text-xl font-bold mb-4">Create New Account</h2>
+          <h2 className="text-xl font-bold mb-4">{editingUserId ? 'Edit Account' : 'Create New Account'}</h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             <div>
               <label className="block mb-1 text-sm font-semibold text-secondary">Username (Login ID)</label>
-              <input type="text" className="glass-input" required value={newUser.username} onChange={e => setNewUser({ ...newUser, username: e.target.value })} />
+              <input type="text" className="glass-input" required value={newUser.username} disabled={!!editingUserId} onChange={e => setNewUser({ ...newUser, username: e.target.value })} />
             </div>
             <div>
-              <label className="block mb-1 text-sm font-semibold text-secondary">Password</label>
-              <input type="text" className="glass-input" required value={newUser.password} onChange={e => setNewUser({ ...newUser, password: e.target.value })} />
+              <label className="block mb-1 text-sm font-semibold text-secondary">{editingUserId ? 'New Password (Leave blank to keep current)' : 'Password'}</label>
+              <input type="text" className="glass-input" required={!editingUserId} value={newUser.password} onChange={e => setNewUser({ ...newUser, password: e.target.value })} />
             </div>
             <div>
               <label className="block mb-1 text-sm font-semibold text-secondary">Full Name (Profile)</label>
@@ -106,7 +136,7 @@ export const UsersPage = () => {
             </div>
             <div>
               <label className="block mb-1 text-sm font-semibold text-secondary">Account Type</label>
-              <select className="glass-input" value={newUser.userType} onChange={e => setNewUser({ ...newUser, userType: e.target.value })}>
+              <select className="glass-input" value={newUser.userType} disabled={!!editingUserId} onChange={e => setNewUser({ ...newUser, userType: e.target.value })}>
                 <option value="client" style={{ color: 'black' }}>Client (Customer)</option>
                 <option value="user" style={{ color: 'black' }}>User (Staff)</option>
               </select>
@@ -146,7 +176,7 @@ export const UsersPage = () => {
           )}
 
           <button type="submit" className="btn-primary mt-6" disabled={submitLoading}>
-            {submitLoading ? 'Creating...' : 'Create Account'}
+            {submitLoading ? 'Saving...' : editingUserId ? 'Update Account' : 'Create Account'}
           </button>
         </form>
       )}
@@ -165,6 +195,7 @@ export const UsersPage = () => {
                 <th className="p-4 font-semibold text-secondary">Type</th>
                 <th className="p-4 font-semibold text-secondary">Permissions</th>
                 <th className="p-4 font-semibold text-secondary">Phone</th>
+                <th className="p-4 font-semibold text-secondary text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -179,7 +210,7 @@ export const UsersPage = () => {
                   </td>
                   <td className="p-4 text-sm text-secondary">
                     {u.userType === 'user' ? (
-                      Object.entries(u.permissions)
+                      Object.entries(u.permissions || {})
                         .filter(([k, v]) => v && k !== 'createOrder')
                         .map(([k]) => k).join(', ') || 'None'
                     ) : (
@@ -187,11 +218,16 @@ export const UsersPage = () => {
                     )}
                   </td>
                   <td className="p-4">{u.phone || '-'}</td>
+                  <td className="p-4 text-right">
+                    <button className="btn-secondary text-sm px-3 py-1" onClick={() => handleEditClick(u)}>
+                      Edit
+                    </button>
+                  </td>
                 </tr>
               ))}
               {users.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="p-8 text-center text-secondary">No users found.</td>
+                  <td colSpan={6} className="p-8 text-center text-secondary">No users found.</td>
                 </tr>
               )}
             </tbody>
