@@ -101,14 +101,13 @@ app.put('/api/change-password', authenticate, async (req, res) => {
 app.get('/api/products', authenticate, async (req, res) => {
   try {
     const products = await all('SELECT * FROM products');
-    const detailed = [];
-    for (const prod of products) {
+    const detailed = await Promise.all(products.map(async (prod) => {
       const materials = await all(
         'SELECT pm.quantity, m.id as materialId, m.name, m.unit FROM product_materials pm JOIN materials m ON pm.materialId = m.id WHERE pm.productId = ?',
         [prod.id]
       );
-      detailed.push({ ...prod, materials });
-    }
+      return { ...prod, materials };
+    }));
     res.json(detailed);
   } catch (err) {
     console.error(err);
@@ -374,20 +373,21 @@ app.get('/api/orders', authenticate, async (req, res) => {
            orders = await all('SELECT * FROM orders WHERE userId = ? ORDER BY createdAt DESC', [req.user.userId]);
        }
     }
-    const detailed = [];
-    for (const order of orders) {
+    const detailed = await Promise.all(orders.map(async (order) => {
       const items = await all('SELECT * FROM order_items WHERE orderId = ? ORDER BY itemIndex ASC, description ASC', [order.id]);
-      // Attach materials per item
-      for (const item of items) {
+      
+      const populatedItems = await Promise.all(items.map(async (item) => {
         const mats = await all(
           `SELECT m.name, m.unit, oim.quantity FROM order_item_materials oim JOIN materials m ON oim.materialId = m.id WHERE oim.orderItemId = ?`,
           [item.id]
         );
-        item.materialsUsed = mats;
-      }
+        return { ...item, materialsUsed: mats };
+      }));
+
       const workflow = await all('SELECT * FROM workflow_steps WHERE orderId = ?', [order.id]);
-      detailed.push({ ...order, items, workflow });
-    }
+      return { ...order, items: populatedItems, workflow };
+    }));
+    
     res.json(detailed);
   } catch (err) {
     console.error(err);
