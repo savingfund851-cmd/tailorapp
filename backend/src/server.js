@@ -633,24 +633,32 @@ app.get('/api/orders/:id/invoice', authenticate, async (req, res) => {
     doc.moveDown();
     // Table header
     doc.font('Helvetica-Bold');
-    doc.text('Item', 50, doc.y, { continued: true });
-    doc.text('Qty', 300, doc.y, { continued: true });
-    doc.text('Price', 350, doc.y, { continued: true });
-    doc.text('Total', 420, doc.y);
-    doc.moveDown();
+    const headerY = doc.y;
+    doc.text('Item', 50, headerY, { width: 240 });
+    doc.text('Qty', 300, headerY, { width: 40, align: 'center' });
+    doc.text('Price', 350, headerY, { width: 60, align: 'right' });
+    doc.text('Total', 420, headerY, { width: 70, align: 'right' });
+    
+    // Line separator
+    doc.moveTo(50, doc.y + 5).lineTo(490, doc.y + 5).stroke();
+    doc.moveDown(1);
+
     doc.font('Helvetica');
     // Items
     items.forEach((item, index) => {
-      // Include serial number as visual representation
       const line = `${index + 1}. ${item.description} (${item.clothColor}, Size: ${item.size})`;
       const qty = item.quantity || 1;
       const lineTotal = Number(item.price) * qty;
       
-      doc.text(line, 50, doc.y, { continued: true });
-      doc.text(String(qty), 300, doc.y, { continued: true });
-      doc.text(Number(item.price).toFixed(2), 350, doc.y, { continued: true });
-      doc.text(lineTotal.toFixed(2), 420, doc.y);
-      doc.moveDown();
+      const currentY = doc.y;
+      // Draw standard columns first (fixed height)
+      doc.text(String(qty), 300, currentY, { width: 40, align: 'center' });
+      doc.text(Number(item.price).toFixed(2), 350, currentY, { width: 60, align: 'right' });
+      doc.text(lineTotal.toFixed(2), 420, currentY, { width: 70, align: 'right' });
+      
+      // Draw item name last so doc.y correctly increments if it wraps multiple lines
+      doc.text(line, 50, currentY, { width: 240 });
+      doc.moveDown(0.5);
     });
     doc.moveDown();
     doc.font('Helvetica-Bold').text(`Total: BDT ${order.total.toFixed(2)}`, { align: 'right' });
