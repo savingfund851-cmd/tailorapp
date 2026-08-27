@@ -77,15 +77,19 @@ export const InvoicePage = () => {
             </tr>
           </thead>
           <tbody>
-            {order.items?.map((item: any, i: number) => (
-              <tr key={i}>
-                <td>{item.description}</td>
-                <td>{item.clothColor} / {item.size}</td>
-                <td>1</td>
-                <td>৳{item.price}</td>
-                <td>৳{item.price}</td>
-              </tr>
-            ))}
+            {order.items?.map((item: any, i: number) => {
+              const qty = item.quantity || 1;
+              const rowTotal = Number(item.price) * qty;
+              return (
+                <tr key={i}>
+                  <td>{i + 1}. {item.description}</td>
+                  <td>{item.clothColor} / {item.size}</td>
+                  <td>{qty}</td>
+                  <td>৳{item.price}</td>
+                  <td>৳{rowTotal}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
 
