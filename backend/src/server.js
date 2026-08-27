@@ -467,6 +467,59 @@ app.post('/api/orders/:id/reject', authenticate, requirePermission('orders'), as
   }
 });
 
+// Delete an order item
+app.delete('/api/orders/:orderId/items/:itemId', authenticate, requirePermission('orders'), async (req, res) => {
+  const orderId = parseInt(req.params.orderId);
+  const itemId = parseInt(req.params.itemId);
+  try {
+    const order = await get('SELECT * FROM orders WHERE id = ?', [orderId]);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    
+    // Delete materials for this item first
+    await run('DELETE FROM order_item_materials WHERE orderItemId = ?', [itemId]);
+    // Delete the item
+    await run('DELETE FROM order_items WHERE id = ?', [itemId]);
+    
+    // Recalculate order total
+    const remainingItems = await all('SELECT price FROM order_items WHERE orderId = ?', [orderId]);
+    const newTotal = remainingItems.reduce((sum, item) => sum + Number(item.price), 0);
+    
+    await run('UPDATE orders SET total = ? WHERE id = ?', [newTotal, orderId]);
+    
+    res.json({ message: 'Item deleted', newTotal });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Update an order item
+app.put('/api/orders/:orderId/items/:itemId', authenticate, requirePermission('orders'), async (req, res) => {
+  const orderId = parseInt(req.params.orderId);
+  const itemId = parseInt(req.params.itemId);
+  const { description, clothColor, size, price, measurements } = req.body;
+  try {
+    const order = await get('SELECT * FROM orders WHERE id = ?', [orderId]);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    
+    await run(
+      'UPDATE order_items SET description = ?, clothColor = ?, size = ?, measurements = ?, price = ? WHERE id = ?',
+      [description, clothColor, size, measurements, price, itemId]
+    );
+    
+    // Recalculate order total
+    const allItems = await all('SELECT price FROM order_items WHERE orderId = ?', [orderId]);
+    const newTotal = allItems.reduce((sum, item) => sum + Number(item.price), 0);
+    
+    await run('UPDATE orders SET total = ? WHERE id = ?', [newTotal, orderId]);
+    
+    res.json({ message: 'Item updated', newTotal });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // Invoice PDF generation
 app.get('/api/orders/:id/invoice', authenticate, async (req, res) => {
   const orderId = parseInt(req.params.id);

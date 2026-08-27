@@ -3,47 +3,74 @@ import { Link } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { useTranslation } from '../i18n';
 import { WorkflowStepper } from '../components/WorkflowStepper';
-import { getOrders, advanceStep, acceptOrder, rejectOrder } from '../services/api';
+import { getOrders, advanceStep, acceptOrder, rejectOrder, updateOrderItem, deleteOrderItem } from '../services/api';
 
-const OrderDetailsItems = ({ initialItems }: { initialItems: any[] }) => {
-  const [items, setItems] = useState<any[]>(() => {
-    // Sort items alphabetically initially to satisfy "ascending akare show korbe"
-    return [...initialItems].sort((a, b) => (a.description || '').localeCompare(b.description || ''));
-  });
+const OrderDetailsItems = ({ initialItems, orderId, onUpdate }: { initialItems: any[], orderId: number, onUpdate: () => void }) => {
+  const auth = useContext(AuthContext);
+  const [items, setItems] = useState<any[]>(() => [...initialItems].sort((a, b) => (a.description || '').localeCompare(b.description || '')));
   const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
+  
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editForm, setEditForm] = useState<any>({});
+  const [loading, setLoading] = useState(false);
+
+  // Sync if initialItems change (e.g. after refresh)
+  useEffect(() => {
+    setItems([...initialItems].sort((a, b) => (a.description || '').localeCompare(b.description || '')));
+  }, [initialItems]);
 
   const handleDragStart = (e: React.DragEvent, idx: number) => {
+    if (editingId) { e.preventDefault(); return; }
     setDraggedIdx(idx);
     e.dataTransfer.effectAllowed = 'move';
-    // Small timeout to allow the visual drag image to capture the element before we style it as 'dragging'
-    setTimeout(() => {
-      if (e.target instanceof HTMLElement) {
-        e.target.style.opacity = '0.5';
-      }
-    }, 0);
+    setTimeout(() => { if (e.target instanceof HTMLElement) e.target.style.opacity = '0.5'; }, 0);
   };
-
-  const handleDragOver = (e: React.DragEvent, idx: number) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-  };
-
+  const handleDragOver = (e: React.DragEvent, idx: number) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; };
   const handleDrop = (e: React.DragEvent, idx: number) => {
     e.preventDefault();
-    if (draggedIdx === null || draggedIdx === idx) return;
-    
+    if (draggedIdx === null || draggedIdx === idx || editingId) return;
     const newItems = [...items];
     const draggedItem = newItems[draggedIdx];
     newItems.splice(draggedIdx, 1);
     newItems.splice(idx, 0, draggedItem);
     setItems(newItems);
   };
-
   const handleDragEnd = (e: React.DragEvent) => {
-    if (e.target instanceof HTMLElement) {
-      e.target.style.opacity = '1';
-    }
+    if (e.target instanceof HTMLElement) e.target.style.opacity = '1';
     setDraggedIdx(null);
+  };
+
+  const startEdit = (item: any) => {
+    setEditingId(item.id);
+    setEditForm({ description: item.description, clothColor: item.clothColor, size: item.size, measurements: item.measurements, price: item.price });
+  };
+
+  const handleSave = async (itemId: number) => {
+    if (!auth?.token) return;
+    setLoading(true);
+    try {
+      await updateOrderItem(orderId, itemId, editForm, auth.token);
+      setEditingId(null);
+      onUpdate(); // refresh orders
+    } catch (err: any) {
+      alert(err.message || 'Failed to update item');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async (itemId: number) => {
+    if (!auth?.token) return;
+    if (!confirm('Are you sure you want to delete this item?')) return;
+    setLoading(true);
+    try {
+      await deleteOrderItem(orderId, itemId, auth.token);
+      onUpdate(); // refresh orders
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete item');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -51,30 +78,64 @@ const OrderDetailsItems = ({ initialItems }: { initialItems: any[] }) => {
       {items.map((item, idx) => (
         <div 
           key={item.id} 
-          draggable 
+          draggable={!editingId} 
           onDragStart={(e) => handleDragStart(e, idx)}
           onDragOver={(e) => handleDragOver(e, idx)}
           onDrop={(e) => handleDrop(e, idx)}
           onDragEnd={handleDragEnd}
           className="mb-4" 
-          style={{ padding: '0.75rem', background: 'rgba(0,0,0,0.15)', borderRadius: '8px', cursor: 'grab', display: 'flex', gap: '12px' }}
+          style={{ padding: '0.75rem', background: 'rgba(0,0,0,0.15)', borderRadius: '8px', cursor: editingId ? 'default' : 'grab', display: 'flex', gap: '12px', flexWrap: 'wrap' }}
         >
           <div style={{ fontWeight: '800', color: 'var(--accent-1)', fontSize: '1.2rem', paddingTop: '2px' }}>
             #{idx + 1}
           </div>
-          <div style={{ flex: 1 }}>
-            <p><strong>{item.description}</strong> — {item.clothColor}, Size: {item.size}</p>
-            <p className="text-secondary" style={{ fontSize: '0.85rem' }}>Measurements: {item.measurements}</p>
-            <p style={{ color: 'var(--accent-3)' }}>৳{item.price}</p>
-            {item.materialsUsed?.length > 0 && (
-              <p className="text-secondary" style={{ fontSize: '0.8rem', marginTop: '4px' }}>
-                Materials Required: {item.materialsUsed.map((m: any) => `${m.name} (${m.quantity} ${m.unit})`).join(', ')}
-              </p>
+          
+          <div style={{ flex: 1, minWidth: '200px' }}>
+            {editingId === item.id ? (
+              <div style={{ display: 'grid', gap: '8px' }}>
+                <input type="text" className="glass-input p-2 text-sm" value={editForm.description} onChange={e => setEditForm({...editForm, description: e.target.value})} placeholder="Description" />
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input type="text" className="glass-input p-2 text-sm w-1/2" value={editForm.clothColor} onChange={e => setEditForm({...editForm, clothColor: e.target.value})} placeholder="Color" />
+                  <input type="text" className="glass-input p-2 text-sm w-1/2" value={editForm.size} onChange={e => setEditForm({...editForm, size: e.target.value})} placeholder="Size" />
+                </div>
+                <textarea className="glass-input p-2 text-sm" value={editForm.measurements} onChange={e => setEditForm({...editForm, measurements: e.target.value})} placeholder="Measurements" rows={2} />
+                <input type="number" className="glass-input p-2 text-sm" value={editForm.price} onChange={e => setEditForm({...editForm, price: e.target.value})} placeholder="Price" />
+              </div>
+            ) : (
+              <>
+                <p><strong>{item.description}</strong> — {item.clothColor}, Size: {item.size}</p>
+                <p className="text-secondary whitespace-pre-wrap" style={{ fontSize: '0.85rem' }}>{item.measurements}</p>
+                <p style={{ color: 'var(--accent-3)' }}>৳{item.price}</p>
+                {item.materialsUsed?.length > 0 && (
+                  <p className="text-secondary" style={{ fontSize: '0.8rem', marginTop: '4px' }}>
+                    Materials Required: {item.materialsUsed.map((m: any) => `${m.name} (${m.quantity} ${m.unit})`).join(', ')}
+                  </p>
+                )}
+              </>
             )}
           </div>
-          <div style={{ opacity: 0.3, display: 'flex', alignItems: 'center' }}>
-            <span style={{ fontSize: '1.5rem' }}>⋮⋮</span>
-          </div>
+          
+          {auth?.isAdmin && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-end', justifyContent: 'flex-start' }}>
+              {editingId === item.id ? (
+                <>
+                  <button onClick={() => handleSave(item.id)} className="btn-primary text-xs px-2 py-1" disabled={loading}>Save</button>
+                  <button onClick={() => setEditingId(null)} className="btn-secondary text-xs px-2 py-1" disabled={loading}>Cancel</button>
+                </>
+              ) : (
+                <>
+                  <button onClick={() => startEdit(item)} className="btn-secondary text-xs px-2 py-1" disabled={!!editingId}>Edit</button>
+                  <button onClick={() => handleDelete(item.id)} className="btn-secondary text-xs px-2 py-1 text-red-400" style={{ borderColor: 'rgba(239,68,68,0.3)' }} disabled={!!editingId}>Delete</button>
+                </>
+              )}
+            </div>
+          )}
+          
+          {!editingId && (
+            <div style={{ opacity: 0.3, display: 'flex', alignItems: 'center', marginLeft: 'auto' }}>
+              <span style={{ fontSize: '1.5rem' }}>⋮⋮</span>
+            </div>
+          )}
         </div>
       ))}
     </div>
@@ -234,7 +295,7 @@ export const OrdersPage = () => {
                       </div>
                     )}
 
-                    <OrderDetailsItems initialItems={order.items || []} />
+                    <OrderDetailsItems initialItems={order.items || []} orderId={order.id} onUpdate={fetchOrders} />
 
                     {/* Workflow */}
                     {order.status !== 'Pending Acceptance' && order.status !== 'Rejected' && (
@@ -245,11 +306,13 @@ export const OrdersPage = () => {
                       />
                     )}
 
-                    {/* Invoice link */}
-                    {order.status === 'Delivered' && (
-                      <Link to={`/orders/${order.id}/invoice`} className="btn-secondary mt-4 block text-center" id={`view-invoice-${order.id}`}>
-                        {t.viewDetails} / Invoice
-                      </Link>
+                    {/* Invoice / Print link */}
+                    {order.status !== 'Pending Acceptance' && order.status !== 'Rejected' && (
+                      <div className="mt-6 flex justify-center">
+                        <Link to={`/orders/${order.id}/invoice`} className="btn-secondary w-full max-w-sm text-center font-bold flex items-center justify-center gap-2" id={`view-invoice-${order.id}`} style={{ padding: '12px' }}>
+                          🖨️ Print Order Details / Invoice
+                        </Link>
+                      </div>
                     )}
                   </div>
                 )}

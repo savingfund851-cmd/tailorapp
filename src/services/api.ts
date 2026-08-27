@@ -56,6 +56,11 @@ export const getOrders = (token: string) => apiGet('/orders', token);
 export const acceptOrder = (orderId: number, token: string) => apiPost(`/orders/${orderId}/accept`, {}, token);
 export const rejectOrder = (orderId: number, token: string) => apiPost(`/orders/${orderId}/reject`, {}, token);
 
+export const updateOrderItem = (orderId: number, itemId: number, payload: any, token: string) =>
+  apiPut(`/orders/${orderId}/items/${itemId}`, payload, token);
+export const deleteOrderItem = (orderId: number, itemId: number, token: string) =>
+  request('DELETE', `/orders/${orderId}/items/${itemId}`, undefined, token);
+
 export const advanceStep = (orderId: number, step: string, token: string) =>
   apiPut(`/orders/${orderId}/step`, { step }, token);
 
