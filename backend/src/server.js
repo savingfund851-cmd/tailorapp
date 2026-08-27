@@ -312,7 +312,7 @@ app.post('/api/orders/custom', authenticate, async (req, res) => {
   // We will NOT deduct stock here. Order is created as 'Pending Acceptance'
   // Calculate total
   let total = 0;
-  for (const item of items) total += Number(item.price);
+  for (const item of items) total += Number(item.price) * Number(item.quantity || 1);
 
   let finalClientId = clientId;
   if (req.user.role === 'client' && !finalClientId) {
@@ -337,8 +337,8 @@ app.post('/api/orders/custom', authenticate, async (req, res) => {
   // Insert order items and link materials
   for (const item of items) {
     const itemResult = await run(
-      'INSERT INTO order_items (orderId, description, clothColor, size, measurements, price) VALUES (?, ?, ?, ?, ?, ?) RETURNING id',
-      [orderId, item.description, item.clothColor, item.size, item.measurements, item.price]
+      'INSERT INTO order_items (orderId, description, clothColor, size, measurements, price, quantity) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id',
+      [orderId, item.description, item.clothColor, item.size, item.measurements, item.price, item.quantity || 1]
     );
     const orderItemId = itemResult.lastID;
     // Insert BOM entries
@@ -481,8 +481,8 @@ app.delete('/api/orders/:orderId/items/:itemId', authenticate, requirePermission
     await run('DELETE FROM order_items WHERE id = ?', [itemId]);
     
     // Recalculate order total
-    const remainingItems = await all('SELECT price FROM order_items WHERE orderId = ?', [orderId]);
-    const newTotal = remainingItems.reduce((sum, item) => sum + Number(item.price), 0);
+    const remainingItems = await all('SELECT price, quantity FROM order_items WHERE orderId = ?', [orderId]);
+    const newTotal = remainingItems.reduce((sum, item) => sum + (Number(item.price) * Number(item.quantity || 1)), 0);
     
     await run('UPDATE orders SET total = ? WHERE id = ?', [newTotal, orderId]);
     
@@ -497,19 +497,19 @@ app.delete('/api/orders/:orderId/items/:itemId', authenticate, requirePermission
 app.put('/api/orders/:orderId/items/:itemId', authenticate, requirePermission('orders'), async (req, res) => {
   const orderId = parseInt(req.params.orderId);
   const itemId = parseInt(req.params.itemId);
-  const { description, clothColor, size, price, measurements } = req.body;
+  const { description, clothColor, size, price, measurements, quantity } = req.body;
   try {
     const order = await get('SELECT * FROM orders WHERE id = ?', [orderId]);
     if (!order) return res.status(404).json({ error: 'Order not found' });
     
     await run(
-      'UPDATE order_items SET description = ?, clothColor = ?, size = ?, measurements = ?, price = ? WHERE id = ?',
-      [description, clothColor, size, measurements, price, itemId]
+      'UPDATE order_items SET description = ?, clothColor = ?, size = ?, measurements = ?, price = ?, quantity = ? WHERE id = ?',
+      [description, clothColor, size, measurements, price, quantity || 1, itemId]
     );
     
     // Recalculate order total
-    const allItems = await all('SELECT price FROM order_items WHERE orderId = ?', [orderId]);
-    const newTotal = allItems.reduce((sum, item) => sum + Number(item.price), 0);
+    const allItems = await all('SELECT price, quantity FROM order_items WHERE orderId = ?', [orderId]);
+    const newTotal = allItems.reduce((sum, item) => sum + (Number(item.price) * Number(item.quantity || 1)), 0);
     
     await run('UPDATE orders SET total = ? WHERE id = ?', [newTotal, orderId]);
     

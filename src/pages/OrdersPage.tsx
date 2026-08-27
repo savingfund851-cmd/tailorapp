@@ -42,7 +42,14 @@ const OrderDetailsItems = ({ initialItems, orderId, onUpdate }: { initialItems: 
 
   const startEdit = (item: any) => {
     setEditingId(item.id);
-    setEditForm({ description: item.description, clothColor: item.clothColor, size: item.size, measurements: item.measurements, price: item.price });
+    setEditForm({ 
+      description: item.description, 
+      clothColor: item.clothColor, 
+      size: item.size, 
+      measurements: item.measurements, 
+      price: item.price,
+      quantity: item.quantity || 1
+    });
   };
 
   const handleSave = async (itemId: number) => {
@@ -95,17 +102,18 @@ const OrderDetailsItems = ({ initialItems, orderId, onUpdate }: { initialItems: 
               <div style={{ display: 'grid', gap: '8px' }}>
                 <input type="text" className="glass-input p-2 text-sm" value={editForm.description} onChange={e => setEditForm({...editForm, description: e.target.value})} placeholder="Description" />
                 <div style={{ display: 'flex', gap: '8px' }}>
+                  <input type="number" min="1" className="glass-input p-2 text-sm w-1/4" value={editForm.quantity} onChange={e => setEditForm({...editForm, quantity: e.target.value})} placeholder="QTY" />
                   <input type="text" className="glass-input p-2 text-sm w-1/2" value={editForm.clothColor} onChange={e => setEditForm({...editForm, clothColor: e.target.value})} placeholder="Color" />
-                  <input type="text" className="glass-input p-2 text-sm w-1/2" value={editForm.size} onChange={e => setEditForm({...editForm, size: e.target.value})} placeholder="Size" />
+                  <input type="text" className="glass-input p-2 text-sm w-1/4" value={editForm.size} onChange={e => setEditForm({...editForm, size: e.target.value})} placeholder="Size" />
                 </div>
                 <textarea className="glass-input p-2 text-sm" value={editForm.measurements} onChange={e => setEditForm({...editForm, measurements: e.target.value})} placeholder="Measurements" rows={2} />
-                <input type="number" className="glass-input p-2 text-sm" value={editForm.price} onChange={e => setEditForm({...editForm, price: e.target.value})} placeholder="Price" />
+                <input type="number" className="glass-input p-2 text-sm" value={editForm.price} onChange={e => setEditForm({...editForm, price: e.target.value})} placeholder="Price (Per Unit)" />
               </div>
             ) : (
               <>
-                <p><strong>{item.description}</strong> — {item.clothColor}, Size: {item.size}</p>
+                <p><strong>{item.description}</strong> — QTY: {item.quantity || 1}, Color: {item.clothColor}, Size: {item.size}</p>
                 <p className="text-secondary whitespace-pre-wrap" style={{ fontSize: '0.85rem' }}>{item.measurements}</p>
-                <p style={{ color: 'var(--accent-3)' }}>৳{item.price}</p>
+                <p style={{ color: 'var(--accent-3)' }}>৳{item.price} x {item.quantity || 1} = ৳{Number(item.price) * Number(item.quantity || 1)}</p>
                 {item.materialsUsed?.length > 0 && (
                   <p className="text-secondary" style={{ fontSize: '0.8rem', marginTop: '4px' }}>
                     Materials Required: {item.materialsUsed.map((m: any) => `${m.name} (${m.quantity} ${m.unit})`).join(', ')}

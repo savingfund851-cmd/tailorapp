@@ -182,7 +182,7 @@ export const CreateOrderPage = () => {
     setError('');
     setLoading(true);
 
-    // Expand cart items by quantity into individual order_items
+    // Expand cart items: we now send quantity to backend instead of unrolling
     const allItems: any[] = [];
     for (const cartItem of cart) {
       const formattedMeasurements = Object.entries(cartItem.measurements)
@@ -190,16 +190,19 @@ export const CreateOrderPage = () => {
         .map(([key, val]) => `${key}: ${val}`)
         .join('\n') + (cartItem.extraNotes.trim() ? `\nNotes: ${cartItem.extraNotes}` : '');
 
-      for (let i = 0; i < cartItem.quantity; i++) {
-        allItems.push({
-          description: cartItem.description,
-          clothColor: cartItem.clothColor,
-          size: cartItem.size,
-          measurements: formattedMeasurements,
-          price: cartItem.price,
-          materials: cartItem.materials.map(m => ({ materialId: m.materialId, quantity: m.quantity }))
-        });
-      }
+      allItems.push({
+        description: cartItem.description,
+        clothColor: cartItem.clothColor,
+        size: cartItem.size,
+        measurements: formattedMeasurements,
+        price: cartItem.price,
+        quantity: cartItem.quantity, // Send quantity directly!
+        materials: cartItem.materials.map(m => ({ 
+          materialId: m.materialId, 
+          // Multiply material per item by quantity to get total materials required for this line item
+          quantity: m.quantity * cartItem.quantity 
+        }))
+      });
     }
 
     const resolvedName = (auth?.isAdmin || auth?.user?.userType === 'user')
