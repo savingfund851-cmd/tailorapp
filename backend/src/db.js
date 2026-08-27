@@ -97,10 +97,12 @@ async function init() {
       size VARCHAR(50) NOT NULL,
       measurements TEXT NOT NULL,
       price REAL NOT NULL,
-      quantity INTEGER DEFAULT 1
+      quantity INTEGER DEFAULT 1,
+      itemIndex INTEGER DEFAULT 0
     )`);
 
     try { await client.query(`ALTER TABLE order_items ADD COLUMN quantity INTEGER DEFAULT 1`); } catch (e) {}
+    try { await client.query(`ALTER TABLE order_items ADD COLUMN itemIndex INTEGER DEFAULT 0`); } catch (e) {}
 
     await client.query(`CREATE TABLE IF NOT EXISTS order_item_materials (
       id SERIAL PRIMARY KEY,
@@ -187,7 +189,8 @@ const camelMap = {
   paidamount: 'paidAmount',
   paymentdate: 'paymentDate',
   usertype: 'userType',
-  clientid: 'clientId'
+  clientid: 'clientId',
+  itemindex: 'itemIndex'
 };
 
 function mapRow(row) {

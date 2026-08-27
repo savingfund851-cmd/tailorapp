@@ -3,11 +3,12 @@ import { Link } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { useTranslation } from '../i18n';
 import { WorkflowStepper } from '../components/WorkflowStepper';
-import { getOrders, advanceStep, acceptOrder, rejectOrder, updateOrderItem, deleteOrderItem } from '../services/api';
+import { getOrders, advanceStep, acceptOrder, rejectOrder, updateOrderItem, deleteOrderItem, updateOrderItemsOrder } from '../services/api';
 
 const OrderDetailsItems = ({ initialItems, orderId, onUpdate }: { initialItems: any[], orderId: number, onUpdate: () => void }) => {
   const auth = useContext(AuthContext);
-  const [items, setItems] = useState<any[]>(() => [...initialItems].sort((a, b) => (a.description || '').localeCompare(b.description || '')));
+  // initialItems comes from backend sorted by itemIndex ASC, description ASC
+  const [items, setItems] = useState<any[]>(initialItems);
   const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
   
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -16,7 +17,7 @@ const OrderDetailsItems = ({ initialItems, orderId, onUpdate }: { initialItems: 
 
   // Sync if initialItems change (e.g. after refresh)
   useEffect(() => {
-    setItems([...initialItems].sort((a, b) => (a.description || '').localeCompare(b.description || '')));
+    setItems(initialItems);
   }, [initialItems]);
 
   const handleDragStart = (e: React.DragEvent, idx: number) => {
@@ -26,7 +27,7 @@ const OrderDetailsItems = ({ initialItems, orderId, onUpdate }: { initialItems: 
     setTimeout(() => { if (e.target instanceof HTMLElement) e.target.style.opacity = '0.5'; }, 0);
   };
   const handleDragOver = (e: React.DragEvent, idx: number) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; };
-  const handleDrop = (e: React.DragEvent, idx: number) => {
+  const handleDrop = async (e: React.DragEvent, idx: number) => {
     e.preventDefault();
     if (draggedIdx === null || draggedIdx === idx || editingId) return;
     const newItems = [...items];
@@ -34,6 +35,14 @@ const OrderDetailsItems = ({ initialItems, orderId, onUpdate }: { initialItems: 
     newItems.splice(draggedIdx, 1);
     newItems.splice(idx, 0, draggedItem);
     setItems(newItems);
+
+    if (auth?.token) {
+      try {
+        await updateOrderItemsOrder(orderId, newItems.map(i => i.id), auth.token);
+      } catch (err) {
+        console.error('Failed to save item order', err);
+      }
+    }
   };
   const handleDragEnd = (e: React.DragEvent) => {
     if (e.target instanceof HTMLElement) e.target.style.opacity = '1';

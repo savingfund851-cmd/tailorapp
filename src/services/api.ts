@@ -58,6 +58,8 @@ export const rejectOrder = (orderId: number, token: string) => apiPost(`/orders/
 
 export const updateOrderItem = (orderId: number, itemId: number, payload: any, token: string) =>
   apiPut(`/orders/${orderId}/items/${itemId}`, payload, token);
+export const updateOrderItemsOrder = (orderId: number, itemIds: number[], token: string) =>
+  apiPut(`/orders/${orderId}/items-order`, { itemIds }, token);
 export const deleteOrderItem = (orderId: number, itemId: number, token: string) =>
   request('DELETE', `/orders/${orderId}/items/${itemId}`, undefined, token);
 
