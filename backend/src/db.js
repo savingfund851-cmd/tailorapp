@@ -118,6 +118,15 @@ async function init() {
       completed INTEGER NOT NULL DEFAULT 0
     )`);
 
+    // Create indexes for fast lookups
+    try { await client.query(`CREATE INDEX IF NOT EXISTS idx_order_items_orderid ON order_items(orderId)`); } catch(e) {}
+    try { await client.query(`CREATE INDEX IF NOT EXISTS idx_order_item_materials_orderitemid ON order_item_materials(orderItemId)`); } catch(e) {}
+    try { await client.query(`CREATE INDEX IF NOT EXISTS idx_workflow_steps_orderid ON workflow_steps(orderId)`); } catch(e) {}
+    try { await client.query(`CREATE INDEX IF NOT EXISTS idx_orders_userid ON orders(userId)`); } catch(e) {}
+    try { await client.query(`CREATE INDEX IF NOT EXISTS idx_orders_clientid ON orders(clientId)`); } catch(e) {}
+    try { await client.query(`CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)`); } catch(e) {}
+    try { await client.query(`CREATE INDEX IF NOT EXISTS idx_product_materials_productid ON product_materials(productId)`); } catch(e) {}
+
     await client.query(`CREATE TABLE IF NOT EXISTS payments (
       id SERIAL PRIMARY KEY,
       orderId INTEGER NOT NULL REFERENCES orders(id),
@@ -222,4 +231,4 @@ async function all(sql, params = []) {
   return res.rows.map(mapRow);
 }
 
-module.exports = { pool, init, run, get, all };
+module.exports = { pool, init, run, get, all, camelMap };

@@ -9,7 +9,7 @@ const path = require('path');
 const JWT_SECRET = 'tailorapp-secret-key-2024';
 
 // Database helpers
-const { db, init, run, get, all } = require('./db');
+const { pool, init, run, get, all, camelMap } = require('./db');
 
 // Initialize SQLite schema and seed data
 init();
@@ -365,7 +365,6 @@ app.get('/api/orders', authenticate, async (req, res) => {
     if (req.user.role === 'master') {
        orders = await all('SELECT * FROM orders ORDER BY createdAt DESC');
     } else {
-       // Find client record for this user
        const clientRecord = await get('SELECT id FROM clients WHERE userId = ?', [req.user.userId]);
        if (clientRecord) {
            orders = await all('SELECT * FROM orders WHERE clientId = ? ORDER BY createdAt DESC', [clientRecord.id]);
@@ -373,21 +372,71 @@ app.get('/api/orders', authenticate, async (req, res) => {
            orders = await all('SELECT * FROM orders WHERE userId = ? ORDER BY createdAt DESC', [req.user.userId]);
        }
     }
-    const detailed = await Promise.all(orders.map(async (order) => {
-      const items = await all('SELECT * FROM order_items WHERE orderId = ? ORDER BY itemIndex ASC, description ASC', [order.id]);
-      
-      const populatedItems = await Promise.all(items.map(async (item) => {
-        const mats = await all(
-          `SELECT m.name, m.unit, oim.quantity FROM order_item_materials oim JOIN materials m ON oim.materialId = m.id WHERE oim.orderItemId = ?`,
-          [item.id]
-        );
-        return { ...item, materialsUsed: mats };
-      }));
 
-      const workflow = await all('SELECT * FROM workflow_steps WHERE orderId = ?', [order.id]);
-      return { ...order, items: populatedItems, workflow };
-    }));
-    
+    if (orders.length === 0) return res.json([]);
+
+    // Batch: fetch ALL items, workflows, and materials in just 3 queries
+    const orderIds = orders.map(o => o.id);
+    const placeholders = orderIds.map((_, i) => `$${i + 1}`).join(',');
+
+    const [allItems, allWorkflow] = await Promise.all([
+      pool.query(`SELECT * FROM order_items WHERE "orderid" IN (${placeholders}) ORDER BY "itemindex" ASC, description ASC`, orderIds),
+      pool.query(`SELECT * FROM workflow_steps WHERE "orderid" IN (${placeholders})`, orderIds)
+    ]);
+
+    const itemRows = allItems.rows.map(r => {
+      const mapped = {};
+      for (const key in r) { mapped[camelMap[key] || key] = r[key]; }
+      return mapped;
+    });
+    const workflowRows = allWorkflow.rows.map(r => {
+      const mapped = {};
+      for (const key in r) { mapped[camelMap[key] || key] = r[key]; }
+      return mapped;
+    });
+
+    // Fetch materials for all items in one query
+    const itemIds = itemRows.map(i => i.id);
+    let matRows = [];
+    if (itemIds.length > 0) {
+      const matPlaceholders = itemIds.map((_, i) => `$${i + 1}`).join(',');
+      const allMats = await pool.query(
+        `SELECT oim."orderitemid", m.name, m.unit, oim.quantity FROM order_item_materials oim JOIN materials m ON oim."materialid" = m.id WHERE oim."orderitemid" IN (${matPlaceholders})`,
+        itemIds
+      );
+      matRows = allMats.rows.map(r => {
+        const mapped = {};
+        for (const key in r) { mapped[camelMap[key] || key] = r[key]; }
+        return mapped;
+      });
+    }
+
+    // Group by orderId in memory
+    const itemsByOrder = {};
+    for (const item of itemRows) {
+      if (!itemsByOrder[item.orderId]) itemsByOrder[item.orderId] = [];
+      itemsByOrder[item.orderId].push(item);
+    }
+    const matsByItem = {};
+    for (const mat of matRows) {
+      if (!matsByItem[mat.orderItemId]) matsByItem[mat.orderItemId] = [];
+      matsByItem[mat.orderItemId].push(mat);
+    }
+    const workflowByOrder = {};
+    for (const ws of workflowRows) {
+      if (!workflowByOrder[ws.orderId]) workflowByOrder[ws.orderId] = [];
+      workflowByOrder[ws.orderId].push(ws);
+    }
+
+    // Assemble
+    const detailed = orders.map(order => {
+      const items = (itemsByOrder[order.id] || []).map(item => ({
+        ...item,
+        materialsUsed: matsByItem[item.id] || []
+      }));
+      return { ...order, items, workflow: workflowByOrder[order.id] || [] };
+    });
+
     res.json(detailed);
   } catch (err) {
     console.error(err);
