@@ -5,6 +5,82 @@ import { useTranslation } from '../i18n';
 import { WorkflowStepper } from '../components/WorkflowStepper';
 import { getOrders, advanceStep, acceptOrder, rejectOrder } from '../services/api';
 
+const OrderDetailsItems = ({ initialItems }: { initialItems: any[] }) => {
+  const [items, setItems] = useState<any[]>(() => {
+    // Sort items alphabetically initially to satisfy "ascending akare show korbe"
+    return [...initialItems].sort((a, b) => (a.description || '').localeCompare(b.description || ''));
+  });
+  const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
+
+  const handleDragStart = (e: React.DragEvent, idx: number) => {
+    setDraggedIdx(idx);
+    e.dataTransfer.effectAllowed = 'move';
+    // Small timeout to allow the visual drag image to capture the element before we style it as 'dragging'
+    setTimeout(() => {
+      if (e.target instanceof HTMLElement) {
+        e.target.style.opacity = '0.5';
+      }
+    }, 0);
+  };
+
+  const handleDragOver = (e: React.DragEvent, idx: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDrop = (e: React.DragEvent, idx: number) => {
+    e.preventDefault();
+    if (draggedIdx === null || draggedIdx === idx) return;
+    
+    const newItems = [...items];
+    const draggedItem = newItems[draggedIdx];
+    newItems.splice(draggedIdx, 1);
+    newItems.splice(idx, 0, draggedItem);
+    setItems(newItems);
+  };
+
+  const handleDragEnd = (e: React.DragEvent) => {
+    if (e.target instanceof HTMLElement) {
+      e.target.style.opacity = '1';
+    }
+    setDraggedIdx(null);
+  };
+
+  return (
+    <div className="order-items-container">
+      {items.map((item, idx) => (
+        <div 
+          key={item.id} 
+          draggable 
+          onDragStart={(e) => handleDragStart(e, idx)}
+          onDragOver={(e) => handleDragOver(e, idx)}
+          onDrop={(e) => handleDrop(e, idx)}
+          onDragEnd={handleDragEnd}
+          className="mb-4" 
+          style={{ padding: '0.75rem', background: 'rgba(0,0,0,0.15)', borderRadius: '8px', cursor: 'grab', display: 'flex', gap: '12px' }}
+        >
+          <div style={{ fontWeight: '800', color: 'var(--accent-1)', fontSize: '1.2rem', paddingTop: '2px' }}>
+            #{idx + 1}
+          </div>
+          <div style={{ flex: 1 }}>
+            <p><strong>{item.description}</strong> — {item.clothColor}, Size: {item.size}</p>
+            <p className="text-secondary" style={{ fontSize: '0.85rem' }}>Measurements: {item.measurements}</p>
+            <p style={{ color: 'var(--accent-3)' }}>৳{item.price}</p>
+            {item.materialsUsed?.length > 0 && (
+              <p className="text-secondary" style={{ fontSize: '0.8rem', marginTop: '4px' }}>
+                Materials Required: {item.materialsUsed.map((m: any) => `${m.name} (${m.quantity} ${m.unit})`).join(', ')}
+              </p>
+            )}
+          </div>
+          <div style={{ opacity: 0.3, display: 'flex', alignItems: 'center' }}>
+            <span style={{ fontSize: '1.5rem' }}>⋮⋮</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 export const OrdersPage = () => {
   const auth = useContext(AuthContext);
   const t = useTranslation(auth?.lang || 'en');
@@ -158,19 +234,7 @@ export const OrdersPage = () => {
                       </div>
                     )}
 
-                    {/* Items */}
-                    {order.items?.map((item: any) => (
-                      <div key={item.id} className="mb-4" style={{ padding: '0.75rem', background: 'rgba(0,0,0,0.15)', borderRadius: '8px' }}>
-                        <p><strong>{item.description}</strong> — {item.clothColor}, Size: {item.size}</p>
-                        <p className="text-secondary" style={{ fontSize: '0.85rem' }}>Measurements: {item.measurements}</p>
-                        <p style={{ color: 'var(--accent-3)' }}>৳{item.price}</p>
-                        {item.materialsUsed?.length > 0 && (
-                          <p className="text-secondary" style={{ fontSize: '0.8rem', marginTop: '4px' }}>
-                            Materials Required: {item.materialsUsed.map((m: any) => `${m.name} (${m.quantity} ${m.unit})`).join(', ')}
-                          </p>
-                        )}
-                      </div>
-                    ))}
+                    <OrderDetailsItems initialItems={order.items || []} />
 
                     {/* Workflow */}
                     {order.status !== 'Pending Acceptance' && order.status !== 'Rejected' && (
