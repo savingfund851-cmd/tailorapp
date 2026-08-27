@@ -376,7 +376,7 @@ app.get('/api/orders', authenticate, async (req, res) => {
     }
     const detailed = [];
     for (const order of orders) {
-      const items = await all('SELECT * FROM order_items WHERE orderId = ?', [order.id]);
+      const items = await all('SELECT * FROM order_items WHERE orderId = ? ORDER BY itemIndex ASC, description ASC', [order.id]);
       // Attach materials per item
       for (const item of items) {
         const mats = await all(
@@ -428,7 +428,7 @@ app.post('/api/orders/:id/accept', authenticate, requirePermission('orders'), as
     if (order.status !== 'Pending Acceptance') return res.status(400).json({ error: 'Order is not pending' });
 
     // Gather required materials from order_items and order_item_materials
-    const items = await all('SELECT * FROM order_items WHERE orderId = ?', [orderId]);
+    const items = await all('SELECT * FROM order_items WHERE orderId = ? ORDER BY itemIndex ASC, description ASC', [orderId]);
     const requiredMaterials = {};
     for (const item of items) {
       const mats = await all('SELECT materialId, quantity FROM order_item_materials WHERE orderItemId = ?', [item.id]);
@@ -520,6 +520,28 @@ app.put('/api/orders/:orderId/items/:itemId', authenticate, requirePermission('o
   }
 });
 
+// Update order items sequence (drag and drop)
+app.put('/api/orders/:id/items-order', authenticate, requirePermission('orders'), async (req, res) => {
+  const orderId = parseInt(req.params.id);
+  const { itemIds } = req.body; // Array of item IDs in the new order
+  if (!Array.isArray(itemIds)) return res.status(400).json({ error: 'Invalid payload' });
+  
+  try {
+    const order = await get('SELECT * FROM orders WHERE id = ?', [orderId]);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    
+    // Update itemIndex for each item
+    for (let i = 0; i < itemIds.length; i++) {
+      await run('UPDATE order_items SET itemIndex = ? WHERE id = ? AND orderId = ?', [i, itemIds[i], orderId]);
+    }
+    
+    res.json({ message: 'Items order saved successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // Invoice PDF generation
 app.get('/api/orders/:id/invoice', authenticate, async (req, res) => {
   const orderId = parseInt(req.params.id);
@@ -537,7 +559,7 @@ app.get('/api/orders/:id/invoice', authenticate, async (req, res) => {
     }
     
     if (!order) return res.status(404).json({ error: 'Order not found' });
-    const items = await all('SELECT * FROM order_items WHERE orderId = ?', [orderId]);
+    const items = await all('SELECT * FROM order_items WHERE orderId = ? ORDER BY itemIndex ASC, description ASC', [orderId]);
 
     // Create PDF
     const doc = new PDFDocument({ margin: 50 });
@@ -569,16 +591,20 @@ app.get('/api/orders/:id/invoice', authenticate, async (req, res) => {
     doc.moveDown();
     doc.font('Helvetica');
     // Items
-    items.forEach(item => {
-      const line = `${item.description} (${item.clothColor}, Size: ${item.size})`;
+    items.forEach((item, index) => {
+      // Include serial number as visual representation
+      const line = `${index + 1}. ${item.description} (${item.clothColor}, Size: ${item.size})`;
+      const qty = item.quantity || 1;
+      const lineTotal = Number(item.price) * qty;
+      
       doc.text(line, 50, doc.y, { continued: true });
-      doc.text('1', 300, doc.y, { continued: true });
-      doc.text(item.price.toFixed(2), 350, doc.y, { continued: true });
-      doc.text(item.price.toFixed(2), 420, doc.y);
+      doc.text(String(qty), 300, doc.y, { continued: true });
+      doc.text(Number(item.price).toFixed(2), 350, doc.y, { continued: true });
+      doc.text(lineTotal.toFixed(2), 420, doc.y);
       doc.moveDown();
     });
     doc.moveDown();
-    doc.font('Helvetica-Bold').text(`Total: $${order.total.toFixed(2)}`, { align: 'right' });
+    doc.font('Helvetica-Bold').text(`Total: BDT ${order.total.toFixed(2)}`, { align: 'right' });
     doc.end();
   } catch (err) {
     console.error(err);
