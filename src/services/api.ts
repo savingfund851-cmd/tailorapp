@@ -76,6 +76,8 @@ export const getInvoicePdf = (orderId: number, token: string) =>
 export const getBilling = (token: string) => apiGet('/billing', token);
 export const getBillingInvoicePdf = (orderId: number, token: string) =>
   apiGet(`/billing/${orderId}/invoice`, token);
+export const getBulkBillingInvoicePdf = (orderIds: number[], token: string) =>
+  apiGet(`/billing/bulk-invoice?orderIds=${orderIds.join(',')}`, token);
 export const collectPayment = (orderId: number, amount: number, note: string, token: string) =>
   apiPost(`/billing/${orderId}/pay`, { amount, note }, token);
 export const bulkCollectPayment = (payments: { orderId: number; amount: number; note?: string }[], token: string) =>

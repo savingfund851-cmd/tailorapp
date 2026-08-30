@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext, useMemo } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { useTranslation } from '../i18n';
-import { getBilling, collectPayment, bulkCollectPayment, getPaymentHistory, getBillingInvoicePdf } from '../services/api';
+import { getBilling, collectPayment, bulkCollectPayment, getPaymentHistory, getBillingInvoicePdf, getBulkBillingInvoicePdf } from '../services/api';
 
 export const BillingPage = () => {
   const auth = useContext(AuthContext);
@@ -234,6 +234,19 @@ export const BillingPage = () => {
     }
   };
 
+  const handleBulkPrintInvoices = async () => {
+    if (!auth?.token || selected.size === 0) return;
+    try {
+      const orderIds = Array.from(selected);
+      const blob = await getBulkBillingInvoicePdf(orderIds, auth.token);
+      const url = URL.createObjectURL(blob as Blob);
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch (err) {
+      alert('Failed to generate bulk billing invoices');
+    }
+  };
+
   if (loading) return <div className="page-container"><p className="text-secondary">Loading billing data...</p></div>;
 
   return (
@@ -377,6 +390,9 @@ export const BillingPage = () => {
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                   <button className="btn-secondary" onClick={selectAll} style={{ padding: '10px 20px' }}>
                     {selected.size === filteredBills.length ? 'Deselect All' : 'Select All'}
+                  </button>
+                  <button className="btn-secondary" onClick={handleBulkPrintInvoices} disabled={selected.size === 0} style={{ padding: '10px 20px', background: 'rgba(255,255,255,0.1)' }}>
+                    🖨️ Bulk Print Invoices
                   </button>
                   <button className="btn-primary" onClick={handleBulkPay} disabled={payLoading || selected.size === 0} style={{ padding: '10px 24px' }}>
                     {payLoading ? 'Processing...' : '💰 Collect Selected'}
