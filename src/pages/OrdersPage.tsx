@@ -355,7 +355,7 @@ export const OrdersPage = () => {
                   {order.status !== 'Pending Acceptance' && order.status !== 'Rejected' && (
                     <div className="mt-6 flex justify-center">
                       <Link to={`/orders/${order.id}/invoice`} className="btn-secondary w-full max-w-sm text-center font-bold flex items-center justify-center gap-2" id={`view-invoice-${order.id}`} style={{ padding: '12px' }}>
-                        🖨️ Print Order Details / Invoice
+                        🖨️ Tech Pack (Print Details)
                       </Link>
                     </div>
                   )}

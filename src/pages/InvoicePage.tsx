@@ -51,12 +51,12 @@ export const InvoicePage = () => {
         <div className="invoice-header">
           <div>
             <h2 style={{ fontSize: '1.8rem', background: 'linear-gradient(135deg, var(--accent-1), var(--accent-2))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-              {t.invoiceTitle}
+              Tech Pack / Invoice
             </h2>
             <p className="text-secondary" style={{ marginTop: '4px' }}>TailorApp</p>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <p><strong>Invoice #:</strong> INV-{String(order.id).padStart(4, '0')}</p>
+            <p><strong>Order #:</strong> ORD-{String(order.id).padStart(4, '0')}</p>
             <p><strong>Date:</strong> {order.createdAt?.split('T')[0]}</p>
           </div>
         </div>

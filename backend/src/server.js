@@ -643,50 +643,61 @@ app.get('/api/orders/:id/invoice', authenticate, async (req, res) => {
       const pdfData = Buffer.concat(buffers);
       res.set({
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename=Invoice-${orderId}.pdf`,
+        'Content-Disposition': `attachment; filename=TechPack-ORD${orderId}.pdf`,
         'Content-Length': pdfData.length
       });
       res.send(pdfData);
     });
 
     // Header
-    doc.fontSize(20).text('TailorApp Invoice', { align: 'center' });
+    doc.fontSize(20).text('TailorApp Tech Pack', { align: 'center' });
     doc.moveDown();
-    doc.fontSize(12).text(`Invoice #: INV-${String(orderId).padStart(4, '0')}`);
+    doc.fontSize(12).text(`Order #: ORD-${String(orderId).padStart(4, '0')}`);
     doc.text(`Date: ${order.createdAt.split('T')[0]}`);
     doc.text(`Client: ${order.customerName}`);
-    doc.moveDown();
-    // Table header
-    doc.font('Helvetica-Bold');
-    const headerY = doc.y;
-    doc.text('Item', 50, headerY, { width: 240 });
-    doc.text('Qty', 300, headerY, { width: 40, align: 'center' });
-    doc.text('Price', 350, headerY, { width: 60, align: 'right' });
-    doc.text('Total', 420, headerY, { width: 70, align: 'right' });
+    doc.moveDown(0.5);
     
     // Line separator
-    doc.moveTo(50, doc.y + 5).lineTo(490, doc.y + 5).stroke();
+    doc.moveTo(50, doc.y).lineTo(540, doc.y).stroke();
     doc.moveDown(1);
 
-    doc.font('Helvetica');
     // Items
     items.forEach((item, index) => {
-      const line = `${index + 1}. ${item.description} (${item.clothColor}, Size: ${item.size})`;
       const qty = item.quantity || 1;
       const lineTotal = Number(item.price) * qty;
       
-      const currentY = doc.y;
-      // Draw standard columns first (fixed height)
-      doc.text(String(qty), 300, currentY, { width: 40, align: 'center' });
-      doc.text(Number(item.price).toFixed(2), 350, currentY, { width: 60, align: 'right' });
-      doc.text(lineTotal.toFixed(2), 420, currentY, { width: 70, align: 'right' });
+      doc.font('Helvetica-Bold').fontSize(14);
+      doc.text(`${index + 1}. ${item.description} (QTY: ${qty})`);
       
-      // Draw item name last so doc.y correctly increments if it wraps multiple lines
-      doc.text(line, 50, currentY, { width: 240 });
+      doc.font('Helvetica').fontSize(10);
+      doc.text(`Color: ${item.clothColor} | Size: ${item.size}`);
+      if (item.measurements) {
+        doc.text(`Measurements: ${item.measurements.replace(/\n/g, ', ')}`);
+      }
+      doc.text(`Price: BDT ${Number(item.price).toFixed(2)} x ${qty} = BDT ${lineTotal.toFixed(2)}`);
+      
       doc.moveDown(0.5);
+
+      // Print checklists per unit
+      doc.font('Helvetica-Bold').fontSize(10);
+      for (let i = 1; i <= qty; i++) {
+        doc.text(`--- Unit ${i} of ${qty} ---`);
+        doc.font('Helvetica').fontSize(10);
+        // Add checkboxes for manual marking
+        const checklist = '[ ] Cutting     [ ] Sewing     [ ] Finishing     [ ] Quality Check     [ ] Completed';
+        doc.text(checklist);
+        doc.moveDown(0.5);
+        doc.font('Helvetica-Bold').fontSize(10);
+      }
+      
+      doc.moveDown(1);
     });
-    doc.moveDown();
-    doc.font('Helvetica-Bold').text(`Total: BDT ${order.total.toFixed(2)}`, { align: 'right' });
+
+    // Line separator
+    doc.moveTo(50, doc.y).lineTo(540, doc.y).stroke();
+    doc.moveDown(1);
+
+    doc.font('Helvetica-Bold').fontSize(14).text(`Grand Total: BDT ${order.total.toFixed(2)}`, { align: 'right' });
     doc.end();
   } catch (err) {
     console.error(err);
