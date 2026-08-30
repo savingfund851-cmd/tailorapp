@@ -735,7 +735,9 @@ app.get('/api/billing/:orderId/invoice', authenticate, async (req, res) => {
     doc.fontSize(11).font('Helvetica-Bold');
     doc.text(`Invoice #: INV-${String(orderId).padStart(4, '0')}`, 50);
     doc.font('Helvetica');
-    doc.text(`Date: ${order.createdAt.split('T')[0]}`);
+    doc.text(`Order Date: ${order.createdAt.split('T')[0]}`);
+    if (order.deliveryDate) doc.text(`Delivery Date: ${order.deliveryDate}`);
+    doc.text(`Print Date: ${new Date().toISOString().split('T')[0]}`);
     doc.text(`Client: ${order.customerName}`);
     doc.text(`Status: ${order.status}`);
     doc.moveDown(1);
@@ -865,7 +867,9 @@ app.get('/api/billing/bulk-invoice', authenticate, async (req, res) => {
       doc.fontSize(11).font('Helvetica-Bold');
       doc.text(`Invoice #: INV-${String(orderId).padStart(4, '0')}`, 50);
       doc.font('Helvetica');
-      doc.text(`Date: ${order.createdAt.split('T')[0]}`);
+      doc.text(`Order Date: ${order.createdAt.split('T')[0]}`);
+      if (order.deliveryDate) doc.text(`Delivery Date: ${order.deliveryDate}`);
+      doc.text(`Print Date: ${new Date().toISOString().split('T')[0]}`);
       doc.text(`Client: ${order.customerName}`);
       doc.text(`Status: ${order.status}`);
       doc.moveDown(1);
