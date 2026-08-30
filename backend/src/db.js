@@ -98,11 +98,13 @@ async function init() {
       measurements TEXT NOT NULL,
       price REAL NOT NULL,
       quantity INTEGER DEFAULT 1,
-      itemIndex INTEGER DEFAULT 0
+      itemIndex INTEGER DEFAULT 0,
+      workflowStep VARCHAR(50) DEFAULT 'Pending'
     )`);
 
     try { await client.query(`ALTER TABLE order_items ADD COLUMN quantity INTEGER DEFAULT 1`); } catch (e) {}
     try { await client.query(`ALTER TABLE order_items ADD COLUMN itemIndex INTEGER DEFAULT 0`); } catch (e) {}
+    try { await client.query(`ALTER TABLE order_items ADD COLUMN workflowStep VARCHAR(50) DEFAULT 'Pending'`); } catch (e) {}
 
     await client.query(`CREATE TABLE IF NOT EXISTS order_item_materials (
       id SERIAL PRIMARY KEY,
@@ -199,7 +201,8 @@ const camelMap = {
   paymentdate: 'paymentDate',
   usertype: 'userType',
   clientid: 'clientId',
-  itemindex: 'itemIndex'
+  itemindex: 'itemIndex',
+  workflowstep: 'workflowStep'
 };
 
 function mapRow(row) {

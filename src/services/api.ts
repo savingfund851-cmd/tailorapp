@@ -65,6 +65,8 @@ export const deleteOrderItem = (orderId: number, itemId: number, token: string) 
 
 export const advanceStep = (orderId: number, step: string, token: string) =>
   apiPut(`/orders/${orderId}/step`, { step }, token);
+export const advanceItemStep = (orderId: number, itemId: number, token: string) =>
+  apiPut(`/orders/${orderId}/items/${itemId}/advance`, {}, token);
 
 // Invoice (returns PDF blob)
 export const getInvoicePdf = (orderId: number, token: string) =>

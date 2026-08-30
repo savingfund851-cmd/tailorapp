@@ -444,28 +444,51 @@ app.get('/api/orders', authenticate, async (req, res) => {
   }
 });
 
-// Advance workflow step
-app.put('/api/orders/:id/step', authenticate, requirePermission('orders'), async (req, res) => {
-  const orderId = parseInt(req.params.id);
-  const { step } = req.body;
+// Workflow steps in order
+const WORKFLOW_STEPS = ['Cutting', 'Sewing', 'Finishing', 'Quality Check', 'Completed'];
+
+// Helper: derive order status from its items' workflow steps
+async function deriveOrderStatus(orderId) {
+  const items = await all('SELECT workflowStep FROM order_items WHERE orderId = ?', [orderId]);
+  if (items.length === 0) return 'Processing';
+  const allCompleted = items.every(i => i.workflowStep === 'Completed');
+  if (allCompleted) return 'Delivered';
+  return 'Processing';
+}
+
+// Advance a single item's workflow step
+app.put('/api/orders/:orderId/items/:itemId/advance', authenticate, requirePermission('orders'), async (req, res) => {
+  const orderId = parseInt(req.params.orderId);
+  const itemId = parseInt(req.params.itemId);
   try {
     const order = await get('SELECT * FROM orders WHERE id = ?', [orderId]);
     if (!order) return res.status(404).json({ error: 'Order not found' });
-    const workflowStep = await get('SELECT * FROM workflow_steps WHERE orderId = ? AND step = ?', [orderId, step]);
-    if (!workflowStep) return res.status(400).json({ error: 'Invalid step' });
-    if (workflowStep.completed) return res.status(400).json({ error: 'Step already completed' });
-    await run('UPDATE workflow_steps SET completed = 1 WHERE id = ?', [workflowStep.id]);
-    // Update order status
-    const allSteps = await all('SELECT * FROM workflow_steps WHERE orderId = ?', [orderId]);
-    const allDone = allSteps.every(s => s.completed === 1);
-    const newStatus = allDone ? 'Delivered' : (allSteps.find(s => s.completed === 0) || {}).step || 'Processing';
+
+    const item = await get('SELECT * FROM order_items WHERE id = ? AND orderId = ?', [itemId, orderId]);
+    if (!item) return res.status(404).json({ error: 'Item not found' });
+
+    const currentIdx = WORKFLOW_STEPS.indexOf(item.workflowStep);
+    if (currentIdx === -1 || currentIdx >= WORKFLOW_STEPS.length - 1) {
+      return res.status(400).json({ error: 'Item is already completed' });
+    }
+
+    const nextStep = WORKFLOW_STEPS[currentIdx + 1];
+    await run('UPDATE order_items SET workflowStep = ? WHERE id = ?', [nextStep, itemId]);
+
+    // Derive and update order status
+    const newStatus = await deriveOrderStatus(orderId);
     await run('UPDATE orders SET status = ? WHERE id = ?', [newStatus, orderId]);
-    const updatedOrder = await get('SELECT * FROM orders WHERE id = ?', [orderId]);
-    res.json({ message: `${step} completed`, order: { ...updatedOrder, workflow: allSteps } });
+
+    res.json({ message: `Item advanced to ${nextStep}`, newStep: nextStep, orderStatus: newStatus });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
   }
+});
+
+// Legacy: Advance workflow step (keep for backward compat, but now just no-op or redirect)
+app.put('/api/orders/:id/step', authenticate, requirePermission('orders'), async (req, res) => {
+  res.status(400).json({ error: 'Use item-level workflow advancement instead' });
 });
 
 // Accept order (check stock, deduct, start Cutting)
@@ -492,7 +515,9 @@ app.post('/api/orders/:id/accept', authenticate, requirePermission('orders'), as
       return res.status(400).json({ error: e.message });
     }
 
-    await run('UPDATE orders SET status = ? WHERE id = ?', ['Cutting', orderId]);
+    // Set all items to 'Cutting' step
+    await run('UPDATE order_items SET workflowStep = ? WHERE orderId = ?', ['Cutting', orderId]);
+    await run('UPDATE orders SET status = ? WHERE id = ?', ['Processing', orderId]);
     res.json({ message: 'Order accepted and stock deducted. Workflow started.' });
   } catch (err) {
     console.error(err);
