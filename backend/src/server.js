@@ -664,30 +664,28 @@ app.get('/api/orders/:id/invoice', authenticate, async (req, res) => {
     // Items
     items.forEach((item, index) => {
       const qty = item.quantity || 1;
-      const lineTotal = Number(item.price) * qty;
       
       doc.font('Helvetica-Bold').fontSize(14);
       doc.text(`${index + 1}. ${item.description} (QTY: ${qty})`);
       
-      doc.font('Helvetica').fontSize(10);
+      doc.font('Helvetica').fontSize(11);
       doc.text(`Color: ${item.clothColor} | Size: ${item.size}`);
       if (item.measurements) {
         doc.text(`Measurements: ${item.measurements.replace(/\n/g, ', ')}`);
       }
-      doc.text(`Price: BDT ${Number(item.price).toFixed(2)} x ${qty} = BDT ${lineTotal.toFixed(2)}`);
       
-      doc.moveDown(0.5);
+      doc.moveDown(0.8);
 
       // Print checklists per unit
-      doc.font('Helvetica-Bold').fontSize(10);
+      doc.font('Helvetica-Bold').fontSize(11);
       for (let i = 1; i <= qty; i++) {
         doc.text(`--- Unit ${i} of ${qty} ---`);
-        doc.font('Helvetica').fontSize(10);
-        // Add checkboxes for manual marking
-        const checklist = '[ ] Cutting     [ ] Sewing     [ ] Finishing     [ ] Quality Check     [ ] Completed';
+        doc.font('Helvetica').fontSize(11);
+        // Add checkboxes with larger gaps for manual marking
+        const checklist = '[  ] Cutting         [  ] Sewing         [  ] Finishing         [  ] Quality Check         [  ] Completed';
         doc.text(checklist);
-        doc.moveDown(0.5);
-        doc.font('Helvetica-Bold').fontSize(10);
+        doc.moveDown(0.8);
+        doc.font('Helvetica-Bold').fontSize(11);
       }
       
       doc.moveDown(1);
@@ -697,7 +695,6 @@ app.get('/api/orders/:id/invoice', authenticate, async (req, res) => {
     doc.moveTo(50, doc.y).lineTo(540, doc.y).stroke();
     doc.moveDown(1);
 
-    doc.font('Helvetica-Bold').fontSize(14).text(`Grand Total: BDT ${order.total.toFixed(2)}`, { align: 'right' });
     doc.end();
   } catch (err) {
     console.error(err);
