@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext, useMemo } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { useTranslation } from '../i18n';
-import { getBilling, collectPayment, bulkCollectPayment, getPaymentHistory } from '../services/api';
+import { getBilling, collectPayment, bulkCollectPayment, getPaymentHistory, getBillingInvoicePdf } from '../services/api';
 
 export const BillingPage = () => {
   const auth = useContext(AuthContext);
@@ -206,6 +206,33 @@ export const BillingPage = () => {
   // Totals
   const totalDue = filteredBills.reduce((sum, b) => sum + (Number(b.total) - Number(b.paidAmount || 0)), 0);
   const totalCollected = filteredHistory.reduce((sum, p) => sum + Number(p.amount), 0);
+
+  const handleDownloadBillingInvoice = async (orderId: number) => {
+    if (!auth?.token) return;
+    try {
+      const blob = await getBillingInvoicePdf(orderId, auth.token);
+      const url = URL.createObjectURL(blob as Blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `BillingInvoice-ORD${orderId}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert('Failed to download billing invoice');
+    }
+  };
+
+  const handlePrintBillingInvoice = async (orderId: number) => {
+    if (!auth?.token) return;
+    try {
+      const blob = await getBillingInvoicePdf(orderId, auth.token);
+      const url = URL.createObjectURL(blob as Blob);
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch (err) {
+      alert('Failed to open billing invoice for printing');
+    }
+  };
 
   if (loading) return <div className="page-container"><p className="text-secondary">Loading billing data...</p></div>;
 
@@ -457,13 +484,29 @@ export const BillingPage = () => {
                                     <span className="text-secondary" style={{ fontSize: '0.75rem' }}>/ ৳{due.toFixed(0)}</span>
                                   </div>
                                 ) : !bulkMode && (
-                                  <button
-                                    onClick={() => openPayModal(bill)}
-                                    className="btn-primary"
-                                    style={{ marginTop: '10px', padding: '6px 16px', fontSize: '0.85rem' }}
-                                  >
-                                    💰 Collect Payment
-                                  </button>
+                                  <div style={{ marginTop: '10px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                    <button
+                                      onClick={() => openPayModal(bill)}
+                                      className="btn-primary"
+                                      style={{ padding: '6px 16px', fontSize: '0.85rem' }}
+                                    >
+                                      💰 Collect Payment
+                                    </button>
+                                    <button
+                                      onClick={() => handlePrintBillingInvoice(bill.id)}
+                                      className="btn-secondary"
+                                      style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+                                    >
+                                      🖨️ Print Invoice
+                                    </button>
+                                    <button
+                                      onClick={() => handleDownloadBillingInvoice(bill.id)}
+                                      className="btn-secondary"
+                                      style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+                                    >
+                                      📥 Download Invoice
+                                    </button>
+                                  </div>
                                 )
                               )}
                             </div>
@@ -546,13 +589,29 @@ export const BillingPage = () => {
                               <span className="text-secondary" style={{ fontSize: '0.75rem' }}>/ ৳{due.toFixed(0)}</span>
                             </div>
                           ) : !bulkMode && (
-                            <button
-                              onClick={() => openPayModal(bill)}
-                              className="btn-primary"
-                              style={{ marginTop: '12px', padding: '8px 20px', fontSize: '0.9rem' }}
-                            >
-                              💰 Collect Payment
-                            </button>
+                            <div style={{ marginTop: '12px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                              <button
+                                onClick={() => openPayModal(bill)}
+                                className="btn-primary"
+                                style={{ padding: '8px 20px', fontSize: '0.9rem' }}
+                              >
+                                💰 Collect Payment
+                              </button>
+                              <button
+                                onClick={() => handlePrintBillingInvoice(bill.id)}
+                                className="btn-secondary"
+                                style={{ padding: '8px 14px', fontSize: '0.85rem' }}
+                              >
+                                🖨️ Print Invoice
+                              </button>
+                              <button
+                                onClick={() => handleDownloadBillingInvoice(bill.id)}
+                                className="btn-secondary"
+                                style={{ padding: '8px 14px', fontSize: '0.85rem' }}
+                              >
+                                📥 Download Invoice
+                              </button>
+                            </div>
                           )
                         )}
                       </div>

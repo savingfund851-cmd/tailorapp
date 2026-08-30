@@ -701,6 +701,125 @@ app.get('/api/orders/:id/invoice', authenticate, async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 });
+// ==================== BILLING INVOICE PDF ====================
+
+app.get('/api/billing/:orderId/invoice', authenticate, async (req, res) => {
+  const orderId = parseInt(req.params.orderId);
+  try {
+    const order = await get('SELECT * FROM orders WHERE id = ?', [orderId]);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    const items = await all('SELECT * FROM order_items WHERE orderId = ? ORDER BY itemIndex ASC, description ASC', [orderId]);
+    const payments = await all('SELECT * FROM payments WHERE orderId = ? ORDER BY paymentDate ASC', [orderId]);
+
+    const doc = new PDFDocument({ margin: 50 });
+    let buffers = [];
+    doc.on('data', buffers.push.bind(buffers));
+    doc.on('end', () => {
+      const pdfData = Buffer.concat(buffers);
+      res.set({
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename=BillingInvoice-ORD${orderId}.pdf`,
+        'Content-Length': pdfData.length
+      });
+      res.send(pdfData);
+    });
+
+    // ---- Header ----
+    doc.fontSize(22).font('Helvetica-Bold').text('BILLING INVOICE', { align: 'center' });
+    doc.moveDown(0.3);
+    doc.fontSize(10).font('Helvetica').fillColor('#666').text('TailorApp', { align: 'center' });
+    doc.fillColor('#000');
+    doc.moveDown(1);
+
+    // ---- Order & Client Info ----
+    doc.fontSize(11).font('Helvetica-Bold');
+    doc.text(`Invoice #: INV-${String(orderId).padStart(4, '0')}`, 50);
+    doc.font('Helvetica');
+    doc.text(`Date: ${order.createdAt.split('T')[0]}`);
+    doc.text(`Client: ${order.customerName}`);
+    doc.text(`Status: ${order.status}`);
+    doc.moveDown(1);
+
+    // ---- Line ----
+    doc.moveTo(50, doc.y).lineTo(540, doc.y).stroke();
+    doc.moveDown(0.8);
+
+    // ---- Items Table Header ----
+    doc.font('Helvetica-Bold').fontSize(10);
+    const hdrY = doc.y;
+    doc.text('#', 50, hdrY, { width: 25 });
+    doc.text('Item', 75, hdrY, { width: 200 });
+    doc.text('Qty', 280, hdrY, { width: 40, align: 'center' });
+    doc.text('Unit Price', 325, hdrY, { width: 70, align: 'right' });
+    doc.text('Total', 400, hdrY, { width: 80, align: 'right' });
+
+    doc.moveTo(50, doc.y + 5).lineTo(540, doc.y + 5).stroke();
+    doc.moveDown(1);
+
+    // ---- Items Rows ----
+    doc.font('Helvetica').fontSize(10);
+    items.forEach((item, idx) => {
+      const qty = item.quantity || 1;
+      const rowTotal = Number(item.price) * qty;
+      const rowY = doc.y;
+      doc.text(String(idx + 1), 50, rowY, { width: 25 });
+      doc.text(`${item.description} (${item.clothColor}, ${item.size})`, 75, rowY, { width: 200 });
+      doc.text(String(qty), 280, rowY, { width: 40, align: 'center' });
+      doc.text(`${Number(item.price).toFixed(2)}`, 325, rowY, { width: 70, align: 'right' });
+      doc.text(`${rowTotal.toFixed(2)}`, 400, rowY, { width: 80, align: 'right' });
+      doc.moveDown(0.6);
+    });
+
+    // ---- Totals ----
+    doc.moveDown(0.5);
+    doc.moveTo(50, doc.y).lineTo(540, doc.y).stroke();
+    doc.moveDown(0.8);
+
+    const paidAmount = Number(order.paidAmount || 0);
+    const due = Number(order.total) - paidAmount;
+
+    doc.font('Helvetica-Bold').fontSize(12);
+    doc.text(`Grand Total:  BDT ${Number(order.total).toFixed(2)}`, { align: 'right' });
+    doc.moveDown(0.3);
+    doc.fillColor('#22883e').text(`Paid:  BDT ${paidAmount.toFixed(2)}`, { align: 'right' });
+    doc.fillColor('#cc0000').text(`Due:  BDT ${due.toFixed(2)}`, { align: 'right' });
+    doc.fillColor('#000');
+
+    // ---- Payment History ----
+    if (payments.length > 0) {
+      doc.moveDown(1.5);
+      doc.font('Helvetica-Bold').fontSize(12).text('Payment History');
+      doc.moveDown(0.5);
+
+      doc.font('Helvetica-Bold').fontSize(9);
+      const phY = doc.y;
+      doc.text('Date', 50, phY, { width: 120 });
+      doc.text('Amount', 180, phY, { width: 80, align: 'right' });
+      doc.text('Note', 270, phY, { width: 200 });
+      doc.moveTo(50, doc.y + 4).lineTo(540, doc.y + 4).stroke();
+      doc.moveDown(0.8);
+
+      doc.font('Helvetica').fontSize(9);
+      payments.forEach(p => {
+        const pY = doc.y;
+        doc.text(p.paymentDate?.split('T')[0] || '', 50, pY, { width: 120 });
+        doc.text(`BDT ${Number(p.amount).toFixed(2)}`, 180, pY, { width: 80, align: 'right' });
+        doc.text(p.note || '—', 270, pY, { width: 200 });
+        doc.moveDown(0.5);
+      });
+    }
+
+    // ---- Footer ----
+    doc.moveDown(2);
+    doc.fontSize(9).fillColor('#888').text('Thank you for your business!', { align: 'center' });
+    doc.fillColor('#000');
+
+    doc.end();
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
 
 // ==================== BILLING API ====================
 
