@@ -34,11 +34,23 @@ export const InvoicePage = () => {
       const url = URL.createObjectURL(blob as Blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `Invoice-${id}.pdf`;
+      a.download = `TechPack-ORD${id}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
       alert('Failed to download PDF');
+    }
+  };
+
+  const handlePrintTechPack = async () => {
+    if (!auth?.token || !id) return;
+    try {
+      const blob = await getInvoicePdf(Number(id), auth.token);
+      const url = URL.createObjectURL(blob as Blob);
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch (err) {
+      alert('Failed to open PDF for printing');
     }
   };
 
@@ -97,20 +109,28 @@ export const InvoicePage = () => {
           <h3 style={{ fontSize: '1.5rem' }}>{t.total}: ৳{order.total}</h3>
         </div>
 
-        <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
+        <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem', flexWrap: 'wrap' }}>
           <button
             className="btn-primary print-hide"
             onClick={() => window.print()}
             id="btn-print-invoice"
           >
-            🖨️ Print Invoice
+            🖨️ Print Summary
           </button>
+          
+          <button
+            className="btn-secondary print-hide"
+            onClick={handlePrintTechPack}
+          >
+            🖨️ Print Tech Pack
+          </button>
+
           <button
             className="btn-secondary print-hide"
             onClick={handleDownloadPdf}
             id="btn-download-pdf"
           >
-            📥 {t.downloadInvoice} (PDF)
+            📥 Download Tech Pack (PDF)
           </button>
         </div>
       </div>
