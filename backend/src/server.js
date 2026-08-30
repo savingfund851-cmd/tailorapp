@@ -445,7 +445,7 @@ app.get('/api/orders', authenticate, async (req, res) => {
 });
 
 // Workflow steps in order
-const WORKFLOW_STEPS = ['Cutting', 'Sewing', 'Finishing', 'Quality Check', 'Completed'];
+const WORKFLOW_STEPS = ['Pending', 'Cutting', 'Sewing', 'Finishing', 'Quality Check', 'Completed'];
 
 // Helper: derive order status from its items' workflow steps
 async function deriveOrderStatus(orderId) {

@@ -4,7 +4,7 @@ import { AuthContext } from '../context/AuthContext';
 import { useTranslation } from '../i18n';
 import { getOrders, acceptOrder, rejectOrder, updateOrderItem, deleteOrderItem, updateOrderItemsOrder, advanceItemStep } from '../services/api';
 
-const WORKFLOW_STEPS = ['Cutting', 'Sewing', 'Finishing', 'Quality Check', 'Completed'];
+const WORKFLOW_STEPS = ['Pending', 'Cutting', 'Sewing', 'Finishing', 'Quality Check', 'Completed'];
 
 const stepColors: Record<string, string> = {
   'Cutting': '#f59e0b',
