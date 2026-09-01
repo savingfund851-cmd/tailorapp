@@ -139,7 +139,7 @@ export const AccountingPage = () => {
                         </span>
                       </div>
                       <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '6px', height: '8px', overflow: 'hidden' }}>
-                        <div style={{ width: ${pct}%, height: '100%', background: 'linear-gradient(90deg, #ef4444, #f97316)', borderRadius: '6px', transition: 'width 0.5s ease' }} />
+                        <div style={{ width: `${pct}%`, height: '100%', background: 'linear-gradient(90deg, #ef4444, #f97316)', borderRadius: '6px', transition: 'width 0.5s ease' }} />
                       </div>
                     </div>
                   );
