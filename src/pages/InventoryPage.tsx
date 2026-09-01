@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext';
-import { getInventory, apiPost, updateInventoryStock } from '../services/api';
+import { getInventory, apiPost, updateInventoryStock, deleteInventoryItem } from '../services/api';
 
 export const InventoryPage = () => {
   const auth = useContext(AuthContext);
@@ -58,20 +58,38 @@ export const InventoryPage = () => {
 
   const handleUpdateStock = async (id: number, currentName: string) => {
     if (!auth?.token) return;
-    const amountStr = window.prompt(`How much stock to ADD for "${currentName}"? (Enter a number)`);
+    const amountStr = window.prompt(`How much to adjust for "${currentName}"? (Use - for negative)`);
     if (!amountStr) return;
     const amount = Number(amountStr);
-    if (isNaN(amount) || amount <= 0) {
-      alert('Please enter a valid positive number');
+    if (isNaN(amount)) {
+      alert('Please enter a valid number');
       return;
     }
+    const adminPassword = window.prompt(`Enter Admin Password to confirm adjustment for ${currentName}:`);
+    if (!adminPassword) return;
+
     try {
-      await updateInventoryStock(id, amount, auth.token);
-      // Refresh inventory
+      await updateInventoryStock(id, amount, adminPassword, auth.token);
       const data = await getInventory(auth.token);
       setInventory(data);
     } catch (err: any) {
       alert(err.message || 'Failed to update stock');
+    }
+  };
+
+  const handleDeleteItem = async (id: number, currentName: string) => {
+    if (!auth?.token) return;
+    if (!window.confirm(`Are you sure you want to delete "${currentName}"? This will also remove it from any Product recipes.`)) return;
+    
+    const adminPassword = window.prompt(`Enter Admin Password to confirm deletion of ${currentName}:`);
+    if (!adminPassword) return;
+
+    try {
+      await deleteInventoryItem(id, adminPassword, auth.token);
+      const data = await getInventory(auth.token);
+      setInventory(data);
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete item');
     }
   };
 
@@ -156,9 +174,15 @@ export const InventoryPage = () => {
                     <button 
                       onClick={() => handleUpdateStock(item.id, item.name)} 
                       className="btn-secondary"
-                      style={{ padding: '6px 12px', fontSize: '0.8rem', borderRadius: '6px' }}
+                      style={{ padding: '6px 12px', fontSize: '0.8rem', borderRadius: '6px', marginRight: '8px' }}
                     >
-                      ➕ Add Stock
+                      ✏️ Adjust Inventory
+                    </button>
+                    <button 
+                      onClick={() => handleDeleteItem(item.id, item.name)} 
+                      style={{ padding: '6px 12px', fontSize: '0.8rem', borderRadius: '6px', background: 'rgba(239,68,68,0.15)', color: '#ef4444', border: 'none', cursor: 'pointer', fontWeight: '600' }}
+                    >
+                      🗑️ Delete
                     </button>
                   </td>
                 </tr>

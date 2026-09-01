@@ -277,13 +277,37 @@ app.post('/api/inventory', authenticate, requirePermission('inventory'), async (
   }
 });
 
-// Update stock by ID
+// Update stock by ID (Adjust Inventory)
 app.put('/api/inventory/:id/stock', authenticate, requirePermission('inventory'), async (req, res) => {
-  const { amount } = req.body;
-  if (amount === undefined) return res.status(400).json({ error: 'Missing amount' });
+  const { amount, adminPassword } = req.body;
+  if (amount === undefined || !adminPassword) return res.status(400).json({ error: 'Missing amount or admin password' });
+  
   try {
+    // Verify Admin Password
+    const adminUser = await get('SELECT id FROM users WHERE role = ? AND password = ?', ['master', adminPassword]);
+    if (!adminUser) return res.status(403).json({ error: 'Invalid Admin Password' });
+
     await run('UPDATE materials SET stock = stock + ? WHERE id = ?', [Number(amount), parseInt(req.params.id)]);
     res.json({ message: 'Stock updated successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Delete inventory item
+app.delete('/api/inventory/:id', authenticate, requirePermission('inventory'), async (req, res) => {
+  const { adminPassword } = req.body; // Can send body in DELETE with fetch API
+  if (!adminPassword) return res.status(400).json({ error: 'Missing admin password' });
+
+  try {
+    // Verify Admin Password
+    const adminUser = await get('SELECT id FROM users WHERE role = ? AND password = ?', ['master', adminPassword]);
+    if (!adminUser) return res.status(403).json({ error: 'Invalid Admin Password' });
+
+    await run('DELETE FROM product_materials WHERE materialId = ?', [parseInt(req.params.id)]);
+    await run('DELETE FROM materials WHERE id = ?', [parseInt(req.params.id)]);
+    res.json({ message: 'Item deleted successfully' });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });

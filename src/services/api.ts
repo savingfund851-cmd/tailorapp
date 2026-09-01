@@ -39,8 +39,10 @@ export const changePassword = (currentPassword: string, newPassword: string, tok
 
 // Inventory
 export const getInventory = (token: string) => apiGet('/inventory', token);
-export const updateInventoryStock = (id: number, amount: number, token: string) =>
-  request('PUT', `/inventory/${id}/stock`, { amount }, token);
+export const updateInventoryStock = (id: number, amount: number, adminPassword: string, token: string) =>
+  request('PUT', `/inventory/${id}/stock`, { amount, adminPassword }, token);
+export const deleteInventoryItem = (id: number, adminPassword: string, token: string) =>
+  request('DELETE', `/inventory/${id}`, { adminPassword }, token);
 export const addInventory = (payload: { name: string; unit: string; stock: number }, token: string) => 
   apiPost('/inventory', payload, token);
 
