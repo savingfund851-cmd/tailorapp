@@ -277,6 +277,19 @@ app.post('/api/inventory', authenticate, requirePermission('inventory'), async (
   }
 });
 
+// Update stock by ID
+app.put('/api/inventory/:id/stock', authenticate, requirePermission('inventory'), async (req, res) => {
+  const { amount } = req.body;
+  if (amount === undefined) return res.status(400).json({ error: 'Missing amount' });
+  try {
+    await run('UPDATE materials SET stock = stock + ? WHERE id = ?', [Number(amount), parseInt(req.params.id)]);
+    res.json({ message: 'Stock updated successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // Helper to validate and deduct stock
 async function validateAndDeductStock(required) {
   // Validate stock

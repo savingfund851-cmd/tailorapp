@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext';
-import { getInventory, apiPost } from '../services/api';
+import { getInventory, apiPost, updateInventoryStock } from '../services/api';
 
 export const InventoryPage = () => {
   const auth = useContext(AuthContext);
@@ -53,6 +53,25 @@ export const InventoryPage = () => {
       setError(err.message || 'Failed to add stock');
     } finally {
       setSubmitLoading(false);
+    }
+  };
+
+  const handleUpdateStock = async (id: number, currentName: string) => {
+    if (!auth?.token) return;
+    const amountStr = window.prompt(`How much stock to ADD for "${currentName}"? (Enter a number)`);
+    if (!amountStr) return;
+    const amount = Number(amountStr);
+    if (isNaN(amount) || amount <= 0) {
+      alert('Please enter a valid positive number');
+      return;
+    }
+    try {
+      await updateInventoryStock(id, amount, auth.token);
+      // Refresh inventory
+      const data = await getInventory(auth.token);
+      setInventory(data);
+    } catch (err: any) {
+      alert(err.message || 'Failed to update stock');
     }
   };
 
@@ -109,6 +128,7 @@ export const InventoryPage = () => {
               <th style={{ padding: '14px 20px', color: 'var(--text-secondary)', fontWeight: '600', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Stock</th>
               <th style={{ padding: '14px 20px', color: 'var(--text-secondary)', fontWeight: '600', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Unit</th>
               <th style={{ padding: '14px 20px', color: 'var(--text-secondary)', fontWeight: '600', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Status</th>
+              <th style={{ padding: '14px 20px', color: 'var(--text-secondary)', fontWeight: '600', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px', textAlign: 'right' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -131,6 +151,15 @@ export const InventoryPage = () => {
                     }}>
                       {stockInfo.label}
                     </span>
+                  </td>
+                  <td style={{ padding: '14px 20px', textAlign: 'right' }}>
+                    <button 
+                      onClick={() => handleUpdateStock(item.id, item.name)} 
+                      className="btn-secondary"
+                      style={{ padding: '6px 12px', fontSize: '0.8rem', borderRadius: '6px' }}
+                    >
+                      ➕ Add Stock
+                    </button>
                   </td>
                 </tr>
               );

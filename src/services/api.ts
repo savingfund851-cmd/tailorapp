@@ -38,7 +38,9 @@ export const changePassword = (currentPassword: string, newPassword: string, tok
   apiPut('/change-password', { currentPassword, newPassword }, token);
 
 // Inventory
-export const getInventory = (token?: string) => apiGet('/inventory', token);
+export const getInventory = (token: string) => apiGet('/inventory', token);
+export const updateInventoryStock = (id: number, amount: number, token: string) =>
+  request('PUT', `/inventory/${id}/stock`, { amount }, token);
 export const addInventory = (payload: { name: string; unit: string; stock: number }, token: string) => 
   apiPost('/inventory', payload, token);
 
