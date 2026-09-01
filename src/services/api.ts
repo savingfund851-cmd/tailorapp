@@ -101,3 +101,6 @@ export const addExpense = (payload: { category: string; amount: number; note: st
 export const deleteExpense = (id: number, token: string) => request('DELETE', `/expenses/${id}`, undefined, token);
 export const getAccountingSummary = (token: string) => apiGet('/accounting/summary', token);
 export const getExpenseCategories = (token: string) => apiGet('/expenses/categories', token);
+export const addExpenseCategory = (name: string, token: string) => apiPost('/expenses/categories', { name }, token);
+export const updateExpenseCategory = (id: number, name: string, token: string) => request('PUT', `/expenses/categories/${id}`, { name }, token);
+export const deleteExpenseCategory = (id: number, token: string) => request('DELETE', `/expenses/categories/${id}`, undefined, token);

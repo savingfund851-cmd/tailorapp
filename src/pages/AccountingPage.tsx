@@ -1,19 +1,13 @@
 import React, { useState, useEffect, useContext, useMemo } from 'react';
 import { AuthContext } from '../context/AuthContext';
-import { getExpenses, addExpense, deleteExpense, getAccountingSummary, getExpenseCategories } from '../services/api';
-
-const PRESET_CATEGORIES = [
-  'Rent', 'Utilities', 'Raw Materials', 'Fabric Purchase', 'Thread & Accessories',
-  'Staff Salary', 'Transport', 'Machine Maintenance', 'Marketing', 'Food & Snacks',
-  'Miscellaneous', 'Equipment', 'Packaging', 'Office Supplies', 'Phone & Internet'
-];
+import { getExpenses, addExpense, deleteExpense, getAccountingSummary, getExpenseCategories, addExpenseCategory, updateExpenseCategory, deleteExpenseCategory } from '../services/api';
 
 export const AccountingPage = () => {
   const auth = useContext(AuthContext);
-  const [tab, setTab] = useState<'overview' | 'expenses' | 'income'>('overview');
+  const [tab, setTab] = useState<'overview' | 'expenses' | 'income' | 'categories'>('overview');
   const [summary, setSummary] = useState<any>(null);
   const [expenses, setExpenses] = useState<any[]>([]);
-  const [categories, setCategories] = useState<string[]>([]);
+  const [categories, setCategories] = useState<{ id: number; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
   const [formCategory, setFormCategory] = useState('');
@@ -25,6 +19,11 @@ export const AccountingPage = () => {
   const [filterCategory, setFilterCategory] = useState('');
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
+
+  // Category management state
+  const [newCatName, setNewCatName] = useState('');
+  const [editingCatId, setEditingCatId] = useState<number | null>(null);
+  const [editingCatName, setEditingCatName] = useState('');
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3000); };
 
@@ -62,6 +61,36 @@ export const AccountingPage = () => {
     try { await deleteExpense(id, auth.token); showToast('Deleted'); await fetchData(); } catch { alert('Failed'); }
   };
 
+  // Category Management Functions
+  const handleAddCat = async () => {
+    if (!auth?.token || !newCatName.trim()) return;
+    try {
+      await addExpenseCategory(newCatName.trim(), auth.token);
+      setNewCatName('');
+      showToast('Category added!');
+      await fetchData();
+    } catch { alert('Failed to add category'); }
+  };
+
+  const handleUpdateCat = async () => {
+    if (!auth?.token || !editingCatId || !editingCatName.trim()) return;
+    try {
+      await updateExpenseCategory(editingCatId, editingCatName.trim(), auth.token);
+      setEditingCatId(null); setEditingCatName('');
+      showToast('Category updated!');
+      await fetchData();
+    } catch { alert('Failed to update category'); }
+  };
+
+  const handleDeleteCat = async (id: number) => {
+    if (!auth?.token || !window.confirm('Delete this category?')) return;
+    try {
+      await deleteExpenseCategory(id, auth.token);
+      showToast('Category deleted!');
+      await fetchData();
+    } catch { alert('Failed to delete category'); }
+  };
+
   const filteredExpenses = useMemo(() => expenses.filter(e => {
     if (filterCategory && e.category !== filterCategory) return false;
     const d = e.expenseDate?.split('T')[0] || '';
@@ -72,10 +101,7 @@ export const AccountingPage = () => {
 
   const filteredTotal = useMemo(() => filteredExpenses.reduce((s, e) => s + Number(e.amount), 0), [filteredExpenses]);
 
-  const allCategories = useMemo(() => {
-    const set = new Set([...PRESET_CATEGORIES, ...categories]);
-    return Array.from(set).sort();
-  }, [categories]);
+  const allCategoryNames = useMemo(() => categories.map(c => c.name).sort(), [categories]);
 
   if (loading) return <div className="page-container"><p className="text-secondary">Loading accounting data...</p></div>;
 
@@ -108,14 +134,14 @@ export const AccountingPage = () => {
 
       {/* Tab Buttons */}
       <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
-        {(['overview', 'expenses', 'income'] as const).map(t => (
+        {(['overview', 'expenses', 'income', 'categories'] as const).map(t => (
           <button key={t} onClick={() => setTab(t)} className="btn-secondary" style={{
             background: tab === t ? 'linear-gradient(135deg, var(--accent-1), var(--accent-2))' : 'rgba(0,0,0,0.3)',
             color: tab === t ? '#0a0e1a' : 'var(--text-secondary)',
             border: tab === t ? 'none' : '1px solid var(--glass-border)',
-            fontWeight: tab === t ? '700' : '500', padding: '10px 20px'
+            fontWeight: tab === t ? '700' : '500', padding: '10px 20px', textTransform: 'capitalize'
           }}>
-            {t === 'overview' ? '📊 Overview' : t === 'expenses' ? '💸 Expenses' : '💰 Income'}
+            {t === 'overview' ? '📊 Overview' : t === 'expenses' ? '💸 Expenses' : t === 'income' ? '💰 Income' : '🏷️ Categories'}
           </button>
         ))}
       </div>
@@ -196,7 +222,7 @@ export const AccountingPage = () => {
                   <label style={{ fontSize: '0.8rem', fontWeight: '600', display: 'block', marginBottom: '6px' }}>Category *</label>
                   <select className="glass-input" value={formCategory} onChange={e => setFormCategory(e.target.value)} style={{ width: '100%' }}>
                     <option value="">Select Category...</option>
-                    {allCategories.map(c => <option key={c} value={c}>{c}</option>)}
+                    {allCategoryNames.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                   <input type="text" className="glass-input" placeholder="Or type custom category..." value={formCategory} onChange={e => setFormCategory(e.target.value)} style={{ marginTop: '6px', width: '100%' }} />
                 </div>
@@ -224,7 +250,7 @@ export const AccountingPage = () => {
               <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Category</label>
               <select className="glass-input" value={filterCategory} onChange={e => setFilterCategory(e.target.value)} style={{ padding: '8px' }}>
                 <option value="">All Categories</option>
-                {allCategories.map(c => <option key={c} value={c}>{c}</option>)}
+                {allCategoryNames.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
             <div>
@@ -315,6 +341,74 @@ export const AccountingPage = () => {
             </div>
           )}
         </>
+      )}
+
+      {/* CATEGORIES TAB */}
+      {tab === 'categories' && (
+        <div className="glass-card" style={{ padding: '1.5rem' }}>
+          <h3 style={{ fontSize: '1.2rem', marginBottom: '1rem' }}>🏷️ Manage Expense Categories</h3>
+          <p className="text-secondary" style={{ fontSize: '0.85rem', marginBottom: '1.5rem' }}>Add, edit, or delete categories used for tracking expenses. Updating a category name will automatically update all existing expenses that use it.</p>
+          
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+            <input 
+              type="text" 
+              className="glass-input" 
+              placeholder="New Category Name..." 
+              value={newCatName} 
+              onChange={e => setNewCatName(e.target.value)} 
+              style={{ flex: 1, maxWidth: '300px' }}
+            />
+            <button className="btn-primary" onClick={handleAddCat}>+ Add Category</button>
+          </div>
+
+          <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 6px', maxWidth: '600px' }}>
+            <thead>
+              <tr>
+                <th style={thStyle}>Category Name</th>
+                <th style={{ ...thStyle, textAlign: 'right' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {categories.map(c => (
+                <tr key={c.id} className="glass-card">
+                  <td style={tdStyle}>
+                    {editingCatId === c.id ? (
+                      <input 
+                        type="text" 
+                        className="glass-input" 
+                        value={editingCatName} 
+                        onChange={e => setEditingCatName(e.target.value)}
+                        style={{ padding: '6px', fontSize: '0.9rem', width: '100%' }}
+                      />
+                    ) : (
+                      <span style={{ fontWeight: '600' }}>{c.name}</span>
+                    )}
+                  </td>
+                  <td style={{ ...tdStyle, textAlign: 'right' }}>
+                    {editingCatId === c.id ? (
+                      <>
+                        <button className="btn-primary" onClick={handleUpdateCat} style={{ padding: '6px 12px', fontSize: '0.8rem', marginRight: '6px' }}>Save</button>
+                        <button className="btn-secondary" onClick={() => setEditingCatId(null)} style={{ padding: '6px 12px', fontSize: '0.8rem' }}>Cancel</button>
+                      </>
+                    ) : (
+                      <>
+                        <button 
+                          onClick={() => { setEditingCatId(c.id); setEditingCatName(c.name); }} 
+                          className="btn-secondary" 
+                          style={{ padding: '6px 12px', fontSize: '0.8rem', marginRight: '6px' }}
+                        >✏️ Edit</button>
+                        <button 
+                          onClick={() => handleDeleteCat(c.id)} 
+                          style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444', border: 'none', padding: '6px 12px', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem' }}
+                        >🗑️</button>
+                      </>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );

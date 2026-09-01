@@ -1191,13 +1191,51 @@ app.get('/api/accounting/summary', authenticate, requirePermission('billing'), a
   }
 });
 
-// Get expense categories (for autocomplete)
+// Get all expense categories
 app.get('/api/expenses/categories', authenticate, requirePermission('billing'), async (req, res) => {
   try {
-    const cats = await all('SELECT DISTINCT category FROM expenses ORDER BY category ASC');
-    res.json(cats.map(c => c.category));
+    const cats = await all('SELECT * FROM expense_categories ORDER BY name ASC');
+    res.json(cats);
   } catch (err) {
     console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Add new category
+app.post('/api/expenses/categories', authenticate, requirePermission('billing'), async (req, res) => {
+  const { name } = req.body;
+  if (!name) return res.status(400).json({ error: 'Name is required' });
+  try {
+    const result = await run('INSERT INTO expense_categories (name) VALUES (?) RETURNING id', [name.trim()]);
+    res.json({ id: result.lastID, name: name.trim() });
+  } catch (err) {
+    res.status(400).json({ error: 'Category might already exist' });
+  }
+});
+
+// Update category
+app.put('/api/expenses/categories/:id', authenticate, requirePermission('billing'), async (req, res) => {
+  const { name } = req.body;
+  if (!name) return res.status(400).json({ error: 'Name is required' });
+  try {
+    const oldCat = await get('SELECT name FROM expense_categories WHERE id = ?', [req.params.id]);
+    if (oldCat) {
+      await run('UPDATE expenses SET category = ? WHERE category = ?', [name.trim(), oldCat.name]);
+    }
+    await run('UPDATE expense_categories SET name = ? WHERE id = ?', [name.trim(), req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Delete category
+app.delete('/api/expenses/categories/:id', authenticate, requirePermission('billing'), async (req, res) => {
+  try {
+    await run('DELETE FROM expense_categories WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }
 });

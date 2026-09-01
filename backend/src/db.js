@@ -146,6 +146,11 @@ async function init() {
       createdAt VARCHAR(255) NOT NULL
     )`);
 
+    await client.query(`CREATE TABLE IF NOT EXISTS expense_categories (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(100) UNIQUE NOT NULL
+    )`);
+
     try { await client.query(`CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(expenseDate)`); } catch(e) {}
 
     // Add paidAmount column to orders
@@ -181,6 +186,20 @@ async function init() {
         await client.query('INSERT INTO materials (name, unit, stock) VALUES ($1, $2, $3)', v);
       }
       console.log('Seeded raw materials (PostgreSQL).');
+    }
+
+    // Seed expense categories if empty
+    const catRes = await client.query('SELECT COUNT(*) AS cnt FROM expense_categories');
+    if (parseInt(catRes.rows[0].cnt) === 0) {
+      const presets = [
+        'Rent', 'Utilities', 'Raw Materials', 'Fabric Purchase', 'Thread & Accessories',
+        'Staff Salary', 'Transport', 'Machine Maintenance', 'Marketing', 'Food & Snacks',
+        'Miscellaneous', 'Equipment', 'Packaging', 'Office Supplies', 'Phone & Internet'
+      ];
+      for (const cat of presets) {
+        await client.query('INSERT INTO expense_categories (name) VALUES ($1) ON CONFLICT DO NOTHING', [cat]);
+      }
+      console.log('Seeded expense categories.');
     }
   } catch (err) {
     console.error('Database initialization error:', err);
