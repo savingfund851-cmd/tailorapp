@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useContext, useMemo } from 'react';
 import { AuthContext } from '../context/AuthContext';
-import { getExpenses, addExpense, deleteExpense, getAccountingSummary, getExpenseCategories, addExpenseCategory, updateExpenseCategory, deleteExpenseCategory } from '../services/api';
+import { getExpenses, addExpense, deleteExpense, getAccountingSummary, getAccountingReportPdf, getExpenseCategories, addExpenseCategory, updateExpenseCategory, deleteExpenseCategory } from '../services/api';
 
 export const AccountingPage = () => {
   const auth = useContext(AuthContext);
@@ -105,13 +105,30 @@ export const AccountingPage = () => {
 
   if (loading) return <div className="page-container"><p className="text-secondary">Loading accounting data...</p></div>;
 
+  const handlePrintReport = async () => {
+    if (!auth?.token) return;
+    try {
+      const blob = await getAccountingReportPdf(auth.token);
+      const url = URL.createObjectURL(blob as Blob);
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch (err) {
+      alert('Failed to generate report');
+    }
+  };
+
   const profitColor = summary?.netProfit >= 0 ? '#22c55e' : '#ef4444';
   const profitIcon = summary?.netProfit >= 0 ? '📈' : '📉';
 
   return (
     <div className="page-container">
       {toast && <div className="toast">{toast}</div>}
-      <h2 className="page-title">📊 Accounting</h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+        <h2 className="page-title" style={{ margin: 0 }}>📊 Accounting</h2>
+        <button className="btn-primary" onClick={handlePrintReport} style={{ background: 'linear-gradient(135deg, #10b981, #059669)', padding: '10px 20px' }}>
+          🖨️ Print Report
+        </button>
+      </div>
 
       {/* Summary Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '28px' }}>

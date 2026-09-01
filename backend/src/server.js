@@ -1191,6 +1191,124 @@ app.get('/api/accounting/summary', authenticate, requirePermission('billing'), a
   }
 });
 
+// Income Statement PDF Report
+app.get('/api/accounting/report', authenticate, requirePermission('billing'), async (req, res) => {
+  try {
+    const incomeRow = await get('SELECT COALESCE(SUM(amount), 0) AS total FROM payments');
+    const totalIncome = Number(incomeRow.total);
+    const expenseRow = await get('SELECT COALESCE(SUM(amount), 0) AS total FROM expenses');
+    const totalExpenses = Number(expenseRow.total);
+    const netProfit = totalIncome - totalExpenses;
+
+    const expenseByCategory = await all(`
+      SELECT category, SUM(amount) AS total
+      FROM expenses
+      GROUP BY category
+      ORDER BY total DESC
+    `);
+
+    const monthlyIncome = await all(`
+      SELECT TO_CHAR(TO_TIMESTAMP(paymentDate, 'YYYY-MM-DD'), 'YYYY-MM') AS month, SUM(amount) AS total
+      FROM payments GROUP BY month ORDER BY month DESC LIMIT 12
+    `);
+
+    const monthlyExpenses = await all(`
+      SELECT TO_CHAR(TO_TIMESTAMP(expenseDate, 'YYYY-MM-DD'), 'YYYY-MM') AS month, SUM(amount) AS total
+      FROM expenses GROUP BY month ORDER BY month DESC LIMIT 12
+    `);
+
+    const doc = new PDFDocument({ margin: 50 });
+    const chunks = [];
+    doc.on('data', chunk => chunks.push(chunk));
+    doc.on('end', () => {
+      const pdfData = Buffer.concat(chunks);
+      res.set({
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': 'attachment; filename=Income_Statement_Report.pdf',
+        'Content-Length': pdfData.length
+      });
+      res.send(pdfData);
+    });
+
+    // Header
+    doc.fontSize(22).font('Helvetica-Bold').text('INCOME STATEMENT REPORT', { align: 'center' });
+    doc.moveDown(0.3);
+    doc.fontSize(10).font('Helvetica').fillColor('#666').text('TailorApp', { align: 'center' });
+    doc.fillColor('#000');
+    doc.moveDown(1);
+    doc.text(`Print Date: ${new Date().toISOString().split('T')[0]}`, { align: 'right' });
+    doc.moveDown(1);
+
+    // Summary Box
+    doc.fontSize(14).font('Helvetica-Bold').text('Overview', { underline: true });
+    doc.moveDown(0.5);
+    doc.fontSize(12).font('Helvetica');
+    doc.text(`Total Income:   ${totalIncome.toLocaleString()} BDT`);
+    doc.text(`Total Expenses: ${totalExpenses.toLocaleString()} BDT`);
+    doc.moveDown(0.5);
+    doc.font('Helvetica-Bold').fillColor(netProfit >= 0 ? '#22c55e' : '#ef4444');
+    doc.text(`Net Profit/Loss: ${netProfit.toLocaleString()} BDT`);
+    doc.fillColor('#000').font('Helvetica');
+    doc.moveDown(1.5);
+
+    // Categories
+    doc.fontSize(14).font('Helvetica-Bold').text('Expense by Category', { underline: true });
+    doc.moveDown(0.5);
+    doc.fontSize(11).font('Helvetica');
+    if (expenseByCategory.length === 0) {
+      doc.text('No expenses recorded.');
+    } else {
+      for (const cat of expenseByCategory) {
+        doc.text(`${cat.category}: ${Number(cat.total).toLocaleString()} BDT`);
+      }
+    }
+    doc.moveDown(1.5);
+
+    // Monthly
+    doc.fontSize(14).font('Helvetica-Bold').text('Monthly Breakdown (Last 12 Months)', { underline: true });
+    doc.moveDown(0.5);
+    doc.fontSize(11).font('Helvetica-Bold');
+    
+    // Combine months
+    const allMonths = Array.from(new Set([...monthlyIncome.map(m=>m.month), ...monthlyExpenses.map(m=>m.month)])).sort().reverse();
+    
+    if (allMonths.length === 0) {
+      doc.font('Helvetica').text('No data available.');
+    } else {
+      const startY = doc.y;
+      doc.text('Month', 50, startY, { width: 100 });
+      doc.text('Income', 150, startY, { width: 100, align: 'right' });
+      doc.text('Expense', 270, startY, { width: 100, align: 'right' });
+      doc.text('Profit', 390, startY, { width: 100, align: 'right' });
+      doc.moveDown(0.5);
+      doc.moveTo(50, doc.y).lineTo(500, doc.y).stroke();
+      doc.moveDown(0.5);
+
+      doc.font('Helvetica');
+      for (const m of allMonths) {
+        const inc = monthlyIncome.find(x => x.month === m)?.total || 0;
+        const exp = monthlyExpenses.find(x => x.month === m)?.total || 0;
+        const prof = Number(inc) - Number(exp);
+        
+        const rowY = doc.y;
+        doc.text(m, 50, rowY, { width: 100 });
+        doc.text(`${Number(inc).toLocaleString()}`, 150, rowY, { width: 100, align: 'right' });
+        doc.text(`${Number(exp).toLocaleString()}`, 270, rowY, { width: 100, align: 'right' });
+        
+        doc.fillColor(prof >= 0 ? '#22c55e' : '#ef4444');
+        doc.text(`${prof.toLocaleString()}`, 390, rowY, { width: 100, align: 'right' });
+        doc.fillColor('#000');
+        doc.moveDown(0.5);
+      }
+    }
+
+    doc.end();
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // Get all expense categories
 app.get('/api/expenses/categories', authenticate, requirePermission('billing'), async (req, res) => {
   try {
