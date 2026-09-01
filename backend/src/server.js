@@ -1097,6 +1097,111 @@ app.get('/api/billing/history', authenticate, async (req, res) => {
   }
 });
 
+// ==================== ACCOUNTING / EXPENSES API ====================
+
+// Get all expenses (with optional date filters via query params)
+app.get('/api/expenses', authenticate, requirePermission('billing'), async (req, res) => {
+  try {
+    const expenses = await all('SELECT * FROM expenses ORDER BY expenseDate DESC, id DESC');
+    res.json(expenses);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Add new expense
+app.post('/api/expenses', authenticate, requirePermission('billing'), async (req, res) => {
+  const { category, amount, note, expenseDate } = req.body;
+  if (!category || !amount || Number(amount) <= 0 || !expenseDate) {
+    return res.status(400).json({ error: 'Category, amount (>0), and date are required' });
+  }
+  try {
+    const result = await run(
+      'INSERT INTO expenses (category, amount, note, expenseDate, createdAt) VALUES (?, ?, ?, ?, ?) RETURNING id',
+      [category.trim(), Number(amount), note || '', expenseDate, new Date().toISOString()]
+    );
+    res.json({ id: result.lastID, message: '✅ Expense added successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Delete expense
+app.delete('/api/expenses/:id', authenticate, requirePermission('billing'), async (req, res) => {
+  try {
+    await run('DELETE FROM expenses WHERE id = ?', [parseInt(req.params.id)]);
+    res.json({ message: 'Expense deleted' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Accounting summary — income from payments, expenses, profit/loss
+app.get('/api/accounting/summary', authenticate, requirePermission('billing'), async (req, res) => {
+  try {
+    // Total income (all payments collected)
+    const incomeRow = await get('SELECT COALESCE(SUM(amount), 0) AS total FROM payments');
+    const totalIncome = Number(incomeRow.total);
+
+    // Total expenses
+    const expenseRow = await get('SELECT COALESCE(SUM(amount), 0) AS total FROM expenses');
+    const totalExpenses = Number(expenseRow.total);
+
+    // Monthly breakdown (last 12 months)
+    const monthlyIncome = await all(`
+      SELECT TO_CHAR(TO_TIMESTAMP(paymentDate, 'YYYY-MM-DD'), 'YYYY-MM') AS month,
+             SUM(amount) AS total
+      FROM payments
+      GROUP BY month
+      ORDER BY month DESC
+      LIMIT 12
+    `);
+
+    const monthlyExpenses = await all(`
+      SELECT TO_CHAR(TO_TIMESTAMP(expenseDate, 'YYYY-MM-DD'), 'YYYY-MM') AS month,
+             SUM(amount) AS total
+      FROM expenses
+      GROUP BY month
+      ORDER BY month DESC
+      LIMIT 12
+    `);
+
+    // Expense by category
+    const expenseByCategory = await all(`
+      SELECT category, SUM(amount) AS total, COUNT(*) AS count
+      FROM expenses
+      GROUP BY category
+      ORDER BY total DESC
+    `);
+
+    res.json({
+      totalIncome,
+      totalExpenses,
+      netProfit: totalIncome - totalExpenses,
+      monthlyIncome,
+      monthlyExpenses,
+      expenseByCategory
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Get expense categories (for autocomplete)
+app.get('/api/expenses/categories', authenticate, requirePermission('billing'), async (req, res) => {
+  try {
+    const cats = await all('SELECT DISTINCT category FROM expenses ORDER BY category ASC');
+    res.json(cats.map(c => c.category));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   console.log(`\n  ✅ Backend running at http://localhost:${PORT}`);

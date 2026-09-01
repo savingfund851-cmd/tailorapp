@@ -93,3 +93,11 @@ export const updateUser = (id: number, data: { name?: string; phone?: string; ad
 
 // Legacy for order creation dropdown
 export const getClients = (token: string) => apiGet('/clients', token);
+
+// ================== ACCOUNTING / EXPENSES ==================
+export const getExpenses = (token: string) => apiGet('/expenses', token);
+export const addExpense = (payload: { category: string; amount: number; note: string; expenseDate: string }, token: string) =>
+  apiPost('/expenses', payload, token);
+export const deleteExpense = (id: number, token: string) => request('DELETE', `/expenses/${id}`, undefined, token);
+export const getAccountingSummary = (token: string) => apiGet('/accounting/summary', token);
+export const getExpenseCategories = (token: string) => apiGet('/expenses/categories', token);

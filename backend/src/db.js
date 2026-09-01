@@ -137,6 +137,17 @@ async function init() {
       note TEXT
     )`);
 
+    await client.query(`CREATE TABLE IF NOT EXISTS expenses (
+      id SERIAL PRIMARY KEY,
+      category VARCHAR(100) NOT NULL,
+      amount REAL NOT NULL,
+      note TEXT,
+      expenseDate VARCHAR(255) NOT NULL,
+      createdAt VARCHAR(255) NOT NULL
+    )`);
+
+    try { await client.query(`CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(expenseDate)`); } catch(e) {}
+
     // Add paidAmount column to orders
     try {
       await client.query(`ALTER TABLE orders ADD COLUMN paidAmount REAL DEFAULT 0`);
@@ -202,7 +213,8 @@ const camelMap = {
   usertype: 'userType',
   clientid: 'clientId',
   itemindex: 'itemIndex',
-  workflowstep: 'workflowStep'
+  workflowstep: 'workflowStep',
+  expensedate: 'expenseDate'
 };
 
 function mapRow(row) {

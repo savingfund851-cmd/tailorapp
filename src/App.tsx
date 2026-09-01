@@ -10,6 +10,7 @@ import { InvoicePage } from './pages/InvoicePage';
 import { LoginPage } from './pages/LoginPage';
 import { ProductsPage } from './pages/ProductsPage';
 import { BillingPage } from './pages/BillingPage';
+import { AccountingPage } from './pages/AccountingPage';
 import { UsersPage } from './pages/UsersPage';
 import { ChangePasswordPage } from './pages/ChangePasswordPage';
 import './index.css';
@@ -83,6 +84,14 @@ function App() {
               <ProtectedRoute>
                 <BillingPage />
               </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/accounting"
+            element={
+              <AdminRoute>
+                <AccountingPage />
+              </AdminRoute>
             }
           />
         </Routes>

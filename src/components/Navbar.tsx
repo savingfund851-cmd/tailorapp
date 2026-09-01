@@ -22,6 +22,7 @@ export const Navbar = () => {
               {auth.hasPermission('createOrder') && <Link to="/create-order" className="nav-link" id="nav-create-order">+ New Order</Link>}
               {auth.hasPermission('orders') && <Link to="/orders" className="nav-link" id="nav-orders">{auth.isAdmin || auth.user?.userType === 'user' ? t.orders : 'My Orders'}</Link>}
               {auth.hasPermission('billing') && <Link to="/billing" className="nav-link" id="nav-billing">{auth.isAdmin || auth.user?.userType === 'user' ? '💰 Billing' : 'My Billing'}</Link>}
+              {auth.isAdmin && <Link to="/accounting" className="nav-link" id="nav-accounting">📊 Accounting</Link>}
               {auth.isAdmin && <Link to="/users" className="nav-link" id="nav-users">👥 Users</Link>}
               {auth.hasPermission('inventory') && <Link to="/inventory" className="nav-link" id="nav-inventory">Inventory</Link>}
             </>
