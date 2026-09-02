@@ -1484,20 +1484,14 @@ app.post('/api/ai/chat', authenticate, async (req, res) => {
       };
     }));
 
-    // 3. All orders with items
-    const allOrders = await all('SELECT id, customerName, status, total, createdAt FROM orders ORDER BY id DESC LIMIT 100');
+    // 3. All orders with items (Limit to 20 to save tokens)
+    const allOrders = await all('SELECT id, customerName, status, total, createdAt FROM orders ORDER BY id DESC LIMIT 20');
     const orderSummary = {
-      total: allOrders.length,
-      byStatus: {}
+      total: await get('SELECT COUNT(*) as cnt FROM orders').then(r => r.cnt),
+      pending: await get("SELECT COUNT(*) as cnt FROM orders WHERE status != 'Delivered'").then(r => r.cnt)
     };
-    allOrders.forEach(o => {
-      orderSummary.byStatus[o.status] = (orderSummary.byStatus[o.status] || 0) + 1;
-    });
 
-    // 4. Clients
-    const clients = await all('SELECT c.name, c.phone, u.status FROM clients c LEFT JOIN users u ON c.userId = u.id');
-
-    // 5. Expenses summary
+    // 4. Expenses summary
     let expenseSummary = {};
     try {
       const expenses = await all('SELECT category, SUM(amount) as total FROM expenses GROUP BY category');
@@ -1531,13 +1525,8 @@ ${JSON.stringify(productsWithBOM, null, 1)}
 📋 ORDERS SUMMARY:
 ═══════════════════════════════════
 Total Orders: ${orderSummary.total}
-By Status: ${JSON.stringify(orderSummary.byStatus)}
-Recent Orders (last 100): ${JSON.stringify(allOrders, null, 1)}
-
-═══════════════════════════════════
-👥 CLIENTS:
-═══════════════════════════════════
-${JSON.stringify(clients, null, 1)}
+Pending Orders: ${orderSummary.pending}
+Recent Orders (last 20): ${JSON.stringify(allOrders, null, 1)}
 
 ═══════════════════════════════════
 💰 FINANCIAL SUMMARY:
