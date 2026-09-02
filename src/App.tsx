@@ -17,12 +17,14 @@ import './index.css';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const auth = useContext(AuthContext);
+  if (auth?.authLoading) return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', color: 'var(--text-secondary)' }}>Loading...</div>;
   if (!auth?.token) return <Navigate to="/login" />;
   return <>{children}</>;
 };
 
 const AdminRoute = ({ children }: { children: React.ReactNode }) => {
   const auth = useContext(AuthContext);
+  if (auth?.authLoading) return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', color: 'var(--text-secondary)' }}>Loading...</div>;
   if (!auth?.token) return <Navigate to="/login" />;
   if (!auth?.isAdmin) return <Navigate to="/" />;
   return <>{children}</>;

@@ -18,6 +18,7 @@ type AuthContextType = {
   isAuthenticated: boolean;
   isAdmin: boolean;
   hasPermission: (perm: string) => boolean;
+  authLoading: boolean;
 };
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -32,25 +33,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return (localStorage.getItem('lang') as 'en' | 'bn') || 'en';
   });
 
-  // Cross-tab session sync:
-  // When a new tab opens without a session, it asks other tabs for the token.
-  // Other tabs respond by temporarily writing their session to localStorage.
+  // If no token in sessionStorage, we need to wait for cross-tab sync
+  const [authLoading, setAuthLoading] = useState<boolean>(() => !sessionStorage.getItem('token'));
+
+  // Cross-tab session sync
   useEffect(() => {
-    // Listen for requests from other tabs
     const handleStorage = (e: StorageEvent) => {
+      // Another tab is asking for our session
       if (e.key === 'requestSession') {
-        // Another tab is asking for our session — share it if we have one
         const t = sessionStorage.getItem('token');
         const u = sessionStorage.getItem('user');
         if (t && u) {
           localStorage.setItem('shareSession', JSON.stringify({ token: t, user: u }));
-          // Clean up immediately so it doesn't persist
-          setTimeout(() => localStorage.removeItem('shareSession'), 500);
+          setTimeout(() => localStorage.removeItem('shareSession'), 1000);
         }
       }
 
+      // We received session data from another tab
       if (e.key === 'shareSession' && e.newValue) {
-        // We received session data from another tab
         if (!sessionStorage.getItem('token')) {
           try {
             const data = JSON.parse(e.newValue);
@@ -58,14 +58,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             sessionStorage.setItem('user', data.user);
             setToken(data.token);
             setUser(JSON.parse(data.user));
+            setAuthLoading(false);
           } catch (err) {
-            // ignore parse errors
+            // ignore
           }
         }
       }
 
+      // Another tab logged out
       if (e.key === 'logoutSync') {
-        // Another tab logged out — sync logout across all tabs
         sessionStorage.removeItem('token');
         sessionStorage.removeItem('user');
         setToken(null);
@@ -75,10 +76,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     window.addEventListener('storage', handleStorage);
 
-    // If this tab has no session, ask other tabs
+    // If this tab has no session, ask other tabs for it
     if (!sessionStorage.getItem('token')) {
-      localStorage.setItem('requestSession', Date.now().toString());
-      localStorage.removeItem('requestSession');
+      // Small delay to ensure event listeners in other tabs are ready
+      setTimeout(() => {
+        localStorage.setItem('requestSession', Date.now().toString());
+        // Don't remove immediately — let other tabs see it
+        setTimeout(() => localStorage.removeItem('requestSession'), 200);
+      }, 100);
+
+      // Give up waiting after 800ms — show login page if no response
+      setTimeout(() => {
+        setAuthLoading(false);
+      }, 800);
+    } else {
+      setAuthLoading(false);
     }
 
     return () => window.removeEventListener('storage', handleStorage);
@@ -98,7 +110,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     sessionStorage.removeItem('user');
     // Notify other tabs to logout too
     localStorage.setItem('logoutSync', Date.now().toString());
-    localStorage.removeItem('logoutSync');
+    setTimeout(() => localStorage.removeItem('logoutSync'), 500);
   };
 
   const toggleLang = () => {
@@ -127,6 +139,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         isAuthenticated: !!token,
         isAdmin,
         hasPermission,
+        authLoading,
       }}
     >
       {children}
