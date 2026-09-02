@@ -19,12 +19,19 @@ app.use(cors());
 app.use(express.json());
 
 // Middleware to verify JWT
-function authenticate(req, res, next) {
+async function authenticate(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader) return res.status(401).json({ error: 'Missing token' });
   const token = authHeader.split(' ')[1];
   try {
     const payload = jwt.verify(token, JWT_SECRET);
+    
+    // Quick DB check to ensure user isn't deactivated or deleted
+    const user = await get('SELECT status FROM users WHERE id = ?', [payload.userId]);
+    if (!user || user.status === 'inactive') {
+      return res.status(401).json({ error: 'Account deactivated or deleted' });
+    }
+
     req.user = payload;
     next();
   } catch (e) {
@@ -70,8 +77,9 @@ function requirePermission(perm) {
 app.post('/api/login', async (req, res) => {
   const { username, password } = req.body;
   try {
-    const user = await get('SELECT id, username, role, userType, permissions FROM users WHERE username = ? AND password = ?', [username, password]);
+    const user = await get('SELECT id, username, role, userType, permissions, status FROM users WHERE username = ? AND password = ?', [username, password]);
     if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+    if (user.status === 'inactive') return res.status(403).json({ error: 'Account is deactivated' });
     let perms = {};
     try { perms = JSON.parse(user.permissions || '{}'); } catch(e) {}
     const token = jwt.sign({ userId: user.id, username: user.username, role: user.role, userType: user.userType, permissions: perms }, JWT_SECRET, { expiresIn: '24h' });
@@ -154,12 +162,12 @@ app.delete('/api/products/:id', authenticate, requirePermission('products'), asy
 // --- Users API (Admin manages all users) ---
 app.get('/api/users', authenticate, requireAdmin, async (req, res) => {
   try {
-    const users = await all('SELECT u.id, u.username, u.role, u.userType, u.permissions, c.id as clientId, c.name, c.phone, c.address, c.createdAt FROM users u LEFT JOIN clients c ON c.userId = u.id WHERE u.role != ? ORDER BY u.id ASC', ['master']);
+    const users = await all('SELECT u.id, u.username, u.role, u.userType, u.permissions, u.status, c.id as clientId, c.name, c.phone, c.address, c.createdAt FROM users u LEFT JOIN clients c ON c.userId = u.id WHERE u.role != ? ORDER BY u.id ASC', ['master']);
     // Parse permissions JSON
     const result = users.map(u => {
       let perms = {};
       try { perms = JSON.parse(u.permissions || '{}'); } catch(e) {}
-      return { ...u, permissions: perms };
+      return { ...u, permissions: perms, status: u.status || 'active' };
     });
     res.json(result);
   } catch (err) {
@@ -204,7 +212,7 @@ app.post('/api/users', authenticate, requireAdmin, async (req, res) => {
 });
 
 app.put('/api/users/:id', authenticate, requireAdmin, async (req, res) => {
-  const { name, phone, address, permissions, password } = req.body;
+  const { name, phone, address, permissions, password, status } = req.body;
   const userId = parseInt(req.params.id);
   try {
     // Update client profile
@@ -216,11 +224,35 @@ app.put('/api/users/:id', authenticate, requireAdmin, async (req, res) => {
       const permsStr = JSON.stringify(permissions);
       await run('UPDATE users SET permissions = ? WHERE id = ?', [permsStr, userId]);
     }
+    // Update status (active/inactive)
+    if (status !== undefined) {
+      await run('UPDATE users SET status = ? WHERE id = ?', [status, userId]);
+    }
     // Admin can reset password
     if (password) {
       await run('UPDATE users SET password = ? WHERE id = ?', [password, userId]);
     }
     res.json({ message: 'User updated' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.delete('/api/users/:id', authenticate, requireAdmin, async (req, res) => {
+  const userId = parseInt(req.params.id);
+  try {
+    const admin = await get("SELECT id FROM users WHERE role = 'master' LIMIT 1");
+    if (!admin) return res.status(500).json({ error: 'No admin found to reassign orders' });
+    
+    // Reassign orders to admin so they are not deleted
+    await run('UPDATE orders SET userId = ? WHERE userId = ?', [admin.id, userId]);
+    // Clear user from clients table but keep the client record (so orders still have a customer)
+    await run('UPDATE clients SET userId = NULL WHERE userId = ?', [userId]);
+    // Delete the user from users table
+    await run('DELETE FROM users WHERE id = ?', [userId]);
+    
+    res.json({ message: 'User deleted successfully' });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });

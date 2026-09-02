@@ -46,6 +46,14 @@ export const deleteInventoryItem = (id: number, adminPassword: string, token: st
 export const addInventory = (payload: { name: string; unit: string; stock: number }, token: string) => 
   apiPost('/inventory', payload, token);
 
+// Users (Admin only)
+export const getUsers = (token: string) => apiGet('/users', token);
+export const createUser = (data: { username: string; password?: string; userType: string; name?: string; phone?: string; address?: string; permissions?: any }, token: string) =>
+  apiPost('/users', data, token);
+export const updateUser = (id: number, data: { name?: string; phone?: string; address?: string; permissions?: any; password?: string; status?: string }, token: string) =>
+  apiPut(`/users/${id}`, data, token);
+export const deleteUser = (id: number, token: string) => request('DELETE', `/users/${id}`, undefined, token);
+
 // Products
 export const getProducts = (token?: string) => apiGet('/products', token);
 export const createProduct = (payload: any, token: string) => apiPost('/products', payload, token);
@@ -89,12 +97,6 @@ export const bulkCollectPayment = (payments: { orderId: number; amount: number; 
 export const getPaymentHistory = (token: string) => apiGet('/billing/history', token);
 
 // ================== USERS & CLIENTS ==================
-export const getUsers = (token: string) => apiGet('/users', token);
-export const createUser = (data: { username: string; password?: string; userType: string; name: string; phone?: string; address?: string; permissions?: any }, token: string) =>
-  apiPost('/users', data, token);
-export const updateUser = (id: number, data: { name?: string; phone?: string; address?: string; permissions?: any; password?: string }, token: string) =>
-  apiPut(`/users/${id}`, data, token);
-
 // Legacy for order creation dropdown
 export const getClients = (token: string) => apiGet('/clients', token);
 

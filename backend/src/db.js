@@ -23,6 +23,7 @@ async function init() {
     // Add new columns if they don't exist (migration for existing DBs)
     try { await client.query(`ALTER TABLE users ADD COLUMN userType VARCHAR(50) NOT NULL DEFAULT 'client'`); } catch(e) {}
     try { await client.query(`ALTER TABLE users ADD COLUMN permissions TEXT DEFAULT '{}'`); } catch(e) {}
+    try { await client.query(`ALTER TABLE users ADD COLUMN status VARCHAR(20) DEFAULT 'active'`); } catch(e) {}
 
     await client.query(`CREATE TABLE IF NOT EXISTS materials (
       id SERIAL PRIMARY KEY,

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext';
-import { getUsers, createUser, updateUser } from '../services/api';
+import { getUsers, createUser, updateUser, deleteUser } from '../services/api';
 
 type User = {
   id: number;
@@ -8,6 +8,7 @@ type User = {
   role: string;
   userType: string;
   permissions: any;
+  status: string;
   clientId: number;
   name: string;
   phone: string;
@@ -22,7 +23,7 @@ export const UsersPage = () => {
   
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingUserId, setEditingUserId] = useState<number | null>(null);
-  const [newUser, setNewUser] = useState({ username: '', password: '', userType: 'client', name: '', phone: '', address: '', permissions: { orders: false, billing: false, inventory: false, products: false, createOrder: true } });
+  const [newUser, setNewUser] = useState({ username: '', password: '', userType: 'client', name: '', phone: '', address: '', status: 'active', permissions: { orders: false, billing: false, inventory: false, products: false, createOrder: true } });
   const [submitLoading, setSubmitLoading] = useState(false);
 
   const auth = useContext(AuthContext);
@@ -84,19 +85,46 @@ export const UsersPage = () => {
     }));
   };
 
-  const handleEditClick = (user: User) => {
+  const handleEditClick = (u: User) => {
+    setEditingUserId(u.id);
     setNewUser({
-      username: user.username,
-      password: '', // Leave blank unless they want to change
-      userType: user.userType,
-      name: user.name || '',
-      phone: user.phone || '',
-      address: user.address || '',
-      permissions: user.permissions || { orders: false, billing: false, inventory: false, products: false, createOrder: true }
+      username: u.username,
+      password: '', // don't load password
+      userType: u.userType,
+      name: u.name,
+      phone: u.phone,
+      address: u.address,
+      status: u.status,
+      permissions: u.permissions || { orders: false, billing: false, inventory: false, products: false, createOrder: true }
     });
-    setEditingUserId(user.id);
     setShowAddForm(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+
+  const handleDeleteUser = async (id: number, username: string) => {
+    if (!auth?.token) return;
+    if (!window.confirm(`Are you sure you want to permanently delete user "${username}"? This cannot be undone.`)) return;
+    
+    try {
+      await deleteUser(id, auth.token);
+      fetchUsers();
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete user');
+    }
+  };
+
+  const handleToggleStatus = async (id: number, currentStatus: string) => {
+    if (!auth?.token) return;
+    const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
+    try {
+      await updateUser(id, { status: newStatus }, auth.token);
+      fetchUsers();
+    } catch (err: any) {
+      alert(err.message || 'Failed to update status');
+    }
+  };
+
+  if (loading) return <div className="page-container"><p className="text-secondary">Loading users...</p></div>;
 
   return (
     <div className="page-container">
@@ -106,7 +134,7 @@ export const UsersPage = () => {
           if (showAddForm) {
             setShowAddForm(false);
             setEditingUserId(null);
-            setNewUser({ username: '', password: '', userType: 'client', name: '', phone: '', address: '', permissions: { orders: false, billing: false, inventory: false, products: false, createOrder: true } });
+            setNewUser({ username: '', password: '', userType: 'client', name: '', phone: '', address: '', status: 'active', permissions: { orders: false, billing: false, inventory: false, products: false, createOrder: true } });
           } else {
             setShowAddForm(true);
           }
@@ -193,8 +221,8 @@ export const UsersPage = () => {
                 <th className="p-4 font-semibold text-secondary">Username</th>
                 <th className="p-4 font-semibold text-secondary">Name</th>
                 <th className="p-4 font-semibold text-secondary">Type</th>
+                <th className="p-4 font-semibold text-secondary">Status</th>
                 <th className="p-4 font-semibold text-secondary">Permissions</th>
-                <th className="p-4 font-semibold text-secondary">Phone</th>
                 <th className="p-4 font-semibold text-secondary text-right">Actions</th>
               </tr>
             </thead>
@@ -208,6 +236,11 @@ export const UsersPage = () => {
                       {u.userType.toUpperCase()}
                     </span>
                   </td>
+                  <td className="p-4">
+                    <span className={`px-2 py-1 rounded text-xs font-semibold ${u.status === 'active' ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'}`}>
+                      {u.status === 'active' ? 'ACTIVE' : 'INACTIVE'}
+                    </span>
+                  </td>
                   <td className="p-4 text-sm text-secondary">
                     {u.userType === 'user' ? (
                       Object.entries(u.permissions || {})
@@ -217,17 +250,25 @@ export const UsersPage = () => {
                       'Client default'
                     )}
                   </td>
-                  <td className="p-4">{u.phone || '-'}</td>
-                  <td className="p-4 text-right">
+                  <td className="p-4 text-right flex justify-end gap-2">
+                    <button className="btn-secondary text-sm px-3 py-1" onClick={() => handleToggleStatus(u.id, u.status)}>
+                      {u.status === 'active' ? '🚫 Deactivate' : '✅ Activate'}
+                    </button>
                     <button className="btn-secondary text-sm px-3 py-1" onClick={() => handleEditClick(u)}>
-                      Edit
+                      ✏️ Edit
+                    </button>
+                    <button 
+                      style={{ padding: '4px 12px', fontSize: '0.875rem', borderRadius: '6px', background: 'rgba(239,68,68,0.15)', color: '#ef4444', border: 'none', cursor: 'pointer', fontWeight: '600' }}
+                      onClick={() => handleDeleteUser(u.id, u.username)}
+                    >
+                      🗑️ Delete
                     </button>
                   </td>
                 </tr>
               ))}
               {users.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-secondary">No users found.</td>
+                  <td colSpan={7} className="p-8 text-center text-secondary">No users found.</td>
                 </tr>
               )}
             </tbody>
