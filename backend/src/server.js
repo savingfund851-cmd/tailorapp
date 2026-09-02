@@ -1480,7 +1480,7 @@ Your job is to answer the user's questions based on this data. If they ask for a
 
     // Send to Gemini
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.6-flash',
       contents: message,
       config: {
         systemInstruction,
