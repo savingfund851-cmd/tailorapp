@@ -1440,12 +1440,20 @@ app.post('/api/ai/chat', authenticate, async (req, res) => {
   try {
     const { message } = req.body;
     if (!message) return res.status(400).json({ error: 'Message is required' });
-    if (!process.env.GEMINI_API_KEY) {
-      return res.status(400).json({ error: 'API Key missing. Please add GEMINI_API_KEY to your .env file.' });
+    
+    // Check DB first, fallback to env
+    let apiKey = process.env.GEMINI_API_KEY;
+    try {
+      const dbSetting = await get("SELECT value FROM settings WHERE key = 'GEMINI_API_KEY'");
+      if (dbSetting && dbSetting.value) apiKey = dbSetting.value;
+    } catch(e) {} // Table might not exist yet if init isn't finished
+
+    if (!apiKey) {
+      return res.status(400).json({ error: 'API Key missing. Please set it in your environment or database.' });
     }
 
     // Initialize AI client
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const ai = new GoogleGenAI({ apiKey: apiKey });
 
     // Gather contextual data
     const inventory = await all('SELECT name, unit, stock FROM materials');

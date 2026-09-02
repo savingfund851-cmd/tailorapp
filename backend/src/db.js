@@ -138,6 +138,11 @@ async function init() {
       note TEXT
     )`);
 
+    await client.query(`CREATE TABLE IF NOT EXISTS settings (
+      key VARCHAR(255) PRIMARY KEY,
+      value TEXT NOT NULL
+    )`);
+
     await client.query(`CREATE TABLE IF NOT EXISTS expenses (
       id SERIAL PRIMARY KEY,
       category VARCHAR(100) NOT NULL,
