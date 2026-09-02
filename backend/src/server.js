@@ -1446,39 +1446,118 @@ app.post('/api/ai/chat', authenticate, async (req, res) => {
     try {
       const dbSetting = await get("SELECT value FROM settings WHERE key = 'GEMINI_API_KEY'");
       if (dbSetting && dbSetting.value) apiKey = dbSetting.value;
-    } catch(e) {} // Table might not exist yet if init isn't finished
+    } catch(e) {}
 
     if (!apiKey) {
-      return res.status(400).json({ error: 'API Key missing. Please set it in your environment or database.' });
+      return res.status(400).json({ error: 'API Key missing.' });
     }
 
-    // Initialize AI client
     const ai = new GoogleGenAI({ apiKey: apiKey });
 
-    // Gather contextual data
-    const inventory = await all('SELECT name, unit, stock FROM materials');
-    const products = await all('SELECT name, category, basePrice FROM products');
-    // For orders, limit to recent/pending ones to save tokens
-    const recentOrders = await all("SELECT id, customerName, status, total, createdAt FROM orders WHERE status != 'Delivered' ORDER BY id DESC LIMIT 50");
+    // ─── Gather FULL application data ───────────────────────────────
 
-    // Build system prompt
+    // 1. Inventory (all materials with stock)
+    const inventory = await all('SELECT id, name, unit, stock FROM materials');
+
+    // 2. Products with BOM (Bill of Materials)
+    const products = await all('SELECT * FROM products');
+    const productsWithBOM = await Promise.all(products.map(async (prod) => {
+      const materials = await all(
+        'SELECT pm.quantity, m.id as materialId, m.name, m.unit, m.stock FROM product_materials pm JOIN materials m ON pm.materialId = m.id WHERE pm.productId = ?',
+        [prod.id]
+      );
+      return {
+        id: prod.id,
+        name: prod.name,
+        category: prod.category,
+        basePrice: prod.baseprice,
+        colors: prod.colors,
+        sizeGroup: prod.sizegroup,
+        sizes: prod.sizes,
+        remarks: prod.remarks,
+        requiredMaterials: materials.map(m => ({
+          materialName: m.name,
+          quantityNeeded: m.quantity,
+          unit: m.unit,
+          currentStock: m.stock
+        }))
+      };
+    }));
+
+    // 3. All orders with items
+    const allOrders = await all('SELECT id, customerName, status, total, createdAt FROM orders ORDER BY id DESC LIMIT 100');
+    const orderSummary = {
+      total: allOrders.length,
+      byStatus: {}
+    };
+    allOrders.forEach(o => {
+      orderSummary.byStatus[o.status] = (orderSummary.byStatus[o.status] || 0) + 1;
+    });
+
+    // 4. Clients
+    const clients = await all('SELECT c.name, c.phone, u.status FROM clients c LEFT JOIN users u ON c.userId = u.id');
+
+    // 5. Expenses summary
+    let expenseSummary = {};
+    try {
+      const expenses = await all('SELECT category, SUM(amount) as total FROM expenses GROUP BY category');
+      expenses.forEach(e => { expenseSummary[e.category] = e.total; });
+    } catch(e) {}
+
+    // 6. Revenue (from paid orders)
+    let totalRevenue = 0;
+    try {
+      const rev = await get("SELECT COALESCE(SUM(amount),0) as total FROM payments");
+      totalRevenue = rev?.total || 0;
+    } catch(e) {}
+
+    // ─── Build comprehensive system prompt ──────────────────────────
     const systemInstruction = `
-You are the AI assistant for TailorApp, a smart tailoring and inventory management system.
-Always be polite, concise, and helpful. You can answer in English or Bengali.
+You are the AI assistant for TailorApp — a professional tailoring and inventory management system.
+You have FULL REAL-TIME knowledge of the entire application. Answer in Bengali (Banglish) or English depending on how the user asks.
+Be specific with numbers, always calculate accurately.
 
-Current Inventory Data:
-${JSON.stringify(inventory)}
+═══════════════════════════════════
+📦 INVENTORY (Raw Materials in Stock):
+═══════════════════════════════════
+${JSON.stringify(inventory, null, 1)}
 
-Products and Base Pricing:
-${JSON.stringify(products)}
+═══════════════════════════════════
+🧵 PRODUCTS (with Bill of Materials / BOM):
+═══════════════════════════════════
+${JSON.stringify(productsWithBOM, null, 1)}
 
-Active/Recent Orders:
-${JSON.stringify(recentOrders)}
+═══════════════════════════════════
+📋 ORDERS SUMMARY:
+═══════════════════════════════════
+Total Orders: ${orderSummary.total}
+By Status: ${JSON.stringify(orderSummary.byStatus)}
+Recent Orders (last 100): ${JSON.stringify(allOrders, null, 1)}
 
-Your job is to answer the user's questions based on this data. If they ask for a cost estimate to make something, use the available materials and product base prices to give a rough estimate and list the required materials. If the material is low or out of stock, warn them. If they ask about orders, use the Active/Recent Orders data to answer.
+═══════════════════════════════════
+👥 CLIENTS:
+═══════════════════════════════════
+${JSON.stringify(clients, null, 1)}
+
+═══════════════════════════════════
+💰 FINANCIAL SUMMARY:
+═══════════════════════════════════
+Total Revenue Collected: ${totalRevenue}
+Expenses by Category: ${JSON.stringify(expenseSummary)}
+
+═══════════════════════════════════
+🧠 YOUR CAPABILITIES & RULES:
+═══════════════════════════════════
+1. **BOM Calculation**: When user asks "how many [product] can I make?", look at that product's requiredMaterials. For EACH material, divide currentStock by quantityNeeded. The MINIMUM of all those values (floored) is how many units can be made. Show the breakdown.
+2. **Cost Estimation**: Use basePrice from the product. If user asks about custom items, estimate from material costs.
+3. **Stock Alerts**: If any material stock is below 5, proactively warn about low stock.
+4. **Order Tracking**: Answer questions about specific customer orders, pending deliveries, etc.
+5. **Financial**: Can report revenue vs expenses, profit margins.
+6. **Smart Suggestions**: If a product can't be made due to missing materials, tell the user exactly which materials are short and by how much.
+
+Always format numbers clearly. Use bullet points for lists. Be concise but thorough.
     `;
 
-    // Send to Gemini
     const response = await ai.models.generateContent({
       model: 'gemini-3.6-flash',
       contents: message,
