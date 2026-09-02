@@ -1569,7 +1569,14 @@ Always format numbers clearly. Use bullet points for lists. Be concise but thoro
     res.json({ reply: response.text });
   } catch (error) {
     console.error('AI Chat Error:', error);
-    res.status(500).json({ error: error.message || 'Failed to process AI request' });
+    let errorMsg = error.message || 'Failed to process AI request';
+    
+    // User-friendly error for Rate Limit / Quota Exhausted
+    if (errorMsg.includes('429') || errorMsg.includes('quota') || errorMsg.includes('RESOURCE_EXHAUSTED')) {
+      errorMsg = '⚠️ AI is currently busy (Free Tier Limit Reached). Please wait 1 minute and try again.';
+    }
+    
+    res.status(500).json({ error: errorMsg });
   }
 });
 
