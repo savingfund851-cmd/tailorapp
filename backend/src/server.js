@@ -262,7 +262,13 @@ app.delete('/api/users/:id', authenticate, requireAdmin, async (req, res) => {
 // Keep /api/clients for backward compat (order creation dropdown)
 app.get('/api/clients', authenticate, async (req, res) => {
   try {
-    const clients = await all('SELECT * FROM clients ORDER BY createdAt DESC');
+    // Only fetch clients associated with active users
+    const clients = await all(`
+      SELECT c.* FROM clients c 
+      INNER JOIN users u ON c.userId = u.id 
+      WHERE u.status = 'active' OR u.status IS NULL 
+      ORDER BY c.createdAt DESC
+    `);
     res.json(clients);
   } catch (err) {
     console.error(err);
