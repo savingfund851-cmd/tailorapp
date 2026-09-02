@@ -23,27 +23,82 @@ type AuthContextType = {
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem('token'));
+  const [token, setToken] = useState<string | null>(() => sessionStorage.getItem('token'));
   const [user, setUser] = useState<User | null>(() => {
-    const storedUser = localStorage.getItem('user');
+    const storedUser = sessionStorage.getItem('user');
     return storedUser ? JSON.parse(storedUser) : null;
   });
   const [lang, setLang] = useState<'en' | 'bn'>(() => {
     return (localStorage.getItem('lang') as 'en' | 'bn') || 'en';
   });
 
+  // Cross-tab session sync:
+  // When a new tab opens without a session, it asks other tabs for the token.
+  // Other tabs respond by temporarily writing their session to localStorage.
+  useEffect(() => {
+    // Listen for requests from other tabs
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'requestSession') {
+        // Another tab is asking for our session — share it if we have one
+        const t = sessionStorage.getItem('token');
+        const u = sessionStorage.getItem('user');
+        if (t && u) {
+          localStorage.setItem('shareSession', JSON.stringify({ token: t, user: u }));
+          // Clean up immediately so it doesn't persist
+          setTimeout(() => localStorage.removeItem('shareSession'), 500);
+        }
+      }
+
+      if (e.key === 'shareSession' && e.newValue) {
+        // We received session data from another tab
+        if (!sessionStorage.getItem('token')) {
+          try {
+            const data = JSON.parse(e.newValue);
+            sessionStorage.setItem('token', data.token);
+            sessionStorage.setItem('user', data.user);
+            setToken(data.token);
+            setUser(JSON.parse(data.user));
+          } catch (err) {
+            // ignore parse errors
+          }
+        }
+      }
+
+      if (e.key === 'logoutSync') {
+        // Another tab logged out — sync logout across all tabs
+        sessionStorage.removeItem('token');
+        sessionStorage.removeItem('user');
+        setToken(null);
+        setUser(null);
+      }
+    };
+
+    window.addEventListener('storage', handleStorage);
+
+    // If this tab has no session, ask other tabs
+    if (!sessionStorage.getItem('token')) {
+      localStorage.setItem('requestSession', Date.now().toString());
+      localStorage.removeItem('requestSession');
+    }
+
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
+
   const login = (newToken: string, newUser: User) => {
     setToken(newToken);
     setUser(newUser);
-    localStorage.setItem('token', newToken);
-    localStorage.setItem('user', JSON.stringify(newUser));
+    sessionStorage.setItem('token', newToken);
+    sessionStorage.setItem('user', JSON.stringify(newUser));
   };
 
   const logout = () => {
     setToken(null);
     setUser(null);
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    sessionStorage.removeItem('token');
+    sessionStorage.removeItem('user');
+    // Notify other tabs to logout too
+    localStorage.setItem('logoutSync', Date.now().toString());
+    localStorage.removeItem('logoutSync');
   };
 
   const toggleLang = () => {
