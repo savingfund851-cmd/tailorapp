@@ -13,6 +13,7 @@ import { BillingPage } from './pages/BillingPage';
 import { AccountingPage } from './pages/AccountingPage';
 import { UsersPage } from './pages/UsersPage';
 import { ChangePasswordPage } from './pages/ChangePasswordPage';
+import { AIChatbot } from './components/AIChatbot';
 import './index.css';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -97,6 +98,7 @@ function App() {
             }
           />
         </Routes>
+        <AIChatbot />
       </Router>
     </AuthProvider>
   );

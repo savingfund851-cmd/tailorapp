@@ -1433,6 +1433,60 @@ app.delete('/api/expenses/categories/:id', authenticate, requirePermission('bill
   }
 });
 
+// ================== AI ASSISTANT ==================
+const { GoogleGenAI } = require('@google/genai');
+
+app.post('/api/ai/chat', authenticate, async (req, res) => {
+  try {
+    const { message } = req.body;
+    if (!message) return res.status(400).json({ error: 'Message is required' });
+    if (!process.env.GEMINI_API_KEY) {
+      return res.status(400).json({ error: 'API Key missing. Please add GEMINI_API_KEY to your .env file.' });
+    }
+
+    // Initialize AI client
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+    // Gather contextual data
+    const inventory = await all('SELECT name, unit, stock FROM materials');
+    const products = await all('SELECT name, category, basePrice FROM products');
+    // For orders, limit to recent/pending ones to save tokens
+    const recentOrders = await all("SELECT id, customerName, status, total, createdAt FROM orders WHERE status != 'Delivered' ORDER BY id DESC LIMIT 50");
+
+    // Build system prompt
+    const systemInstruction = `
+You are the AI assistant for TailorApp, a smart tailoring and inventory management system.
+Always be polite, concise, and helpful. You can answer in English or Bengali.
+
+Current Inventory Data:
+${JSON.stringify(inventory)}
+
+Products and Base Pricing:
+${JSON.stringify(products)}
+
+Active/Recent Orders:
+${JSON.stringify(recentOrders)}
+
+Your job is to answer the user's questions based on this data. If they ask for a cost estimate to make something, use the available materials and product base prices to give a rough estimate and list the required materials. If the material is low or out of stock, warn them. If they ask about orders, use the Active/Recent Orders data to answer.
+    `;
+
+    // Send to Gemini
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: message,
+      config: {
+        systemInstruction,
+      }
+    });
+
+    res.json({ reply: response.text });
+  } catch (error) {
+    console.error('AI Chat Error:', error);
+    res.status(500).json({ error: error.message || 'Failed to process AI request' });
+  }
+});
+
+// Start Server
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   console.log(`\n  ✅ Backend running at http://localhost:${PORT}`);

@@ -111,3 +111,6 @@ export const getExpenseCategories = (token: string) => apiGet('/expenses/categor
 export const addExpenseCategory = (name: string, token: string) => apiPost('/expenses/categories', { name }, token);
 export const updateExpenseCategory = (id: number, name: string, token: string) => request('PUT', `/expenses/categories/${id}`, { name }, token);
 export const deleteExpenseCategory = (id: number, token: string) => request('DELETE', `/expenses/categories/${id}`, undefined, token);
+
+// ================== AI ASSISTANT ==================
+export const askAI = (message: string, token: string) => apiPost('/ai/chat', { message }, token);
