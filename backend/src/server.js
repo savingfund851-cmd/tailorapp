@@ -1434,25 +1434,27 @@ app.delete('/api/expenses/categories/:id', authenticate, requirePermission('bill
 });
 
 // ================== AI ASSISTANT ==================
-const { GoogleGenAI } = require('@google/genai');
+const Groq = require('groq-sdk');
 
 app.post('/api/ai/chat', authenticate, async (req, res) => {
   try {
     const { message } = req.body;
     if (!message) return res.status(400).json({ error: 'Message is required' });
     
-    // Check DB first, fallback to env
-    let apiKey = process.env.GEMINI_API_KEY;
+    // Use Groq API Key (Checking DB first, fallback to env)
+    let apiKey = process.env.GROQ_API_KEY;
     try {
-      const dbSetting = await get("SELECT value FROM settings WHERE key = 'GEMINI_API_KEY'");
+      const dbSetting = await get("SELECT value FROM settings WHERE key = 'GROQ_API_KEY'");
       if (dbSetting && dbSetting.value) apiKey = dbSetting.value;
     } catch(e) {}
 
+    // Fallback if not found, we can also check the old GEMINI_API_KEY row just in case they saved it there,
+    // but the user gave us the Groq key specifically. Let's strictly use the Groq key they provided.
     if (!apiKey) {
-      return res.status(400).json({ error: 'API Key missing.' });
+      return res.status(400).json({ error: 'Groq API Key missing.' });
     }
 
-    const ai = new GoogleGenAI({ apiKey: apiKey });
+    const groq = new Groq({ apiKey: apiKey });
 
     // ─── Gather FULL application data ───────────────────────────────
 
@@ -1498,7 +1500,7 @@ app.post('/api/ai/chat', authenticate, async (req, res) => {
       expenses.forEach(e => { expenseSummary[e.category] = e.total; });
     } catch(e) {}
 
-    // 6. Revenue (from paid orders)
+    // 5. Revenue (from paid orders)
     let totalRevenue = 0;
     try {
       const rev = await get("SELECT COALESCE(SUM(amount),0) as total FROM payments");
@@ -1547,22 +1549,25 @@ Expenses by Category: ${JSON.stringify(expenseSummary)}
 Always format numbers clearly. Use bullet points for lists. Be concise but thorough.
     `;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.6-flash',
-      contents: message,
-      config: {
-        systemInstruction,
-      }
+    const chatCompletion = await groq.chat.completions.create({
+      messages: [
+        { role: 'system', content: systemInstruction },
+        { role: 'user', content: message }
+      ],
+      model: 'llama3-8b-8192',
+      temperature: 0.5,
+      max_tokens: 1024,
+      top_p: 1,
     });
 
-    res.json({ reply: response.text });
+    res.json({ reply: chatCompletion.choices[0]?.message?.content || 'No response' });
   } catch (error) {
     console.error('AI Chat Error:', error);
     let errorMsg = error.message || 'Failed to process AI request';
     
     // User-friendly error for Rate Limit / Quota Exhausted
-    if (errorMsg.includes('429') || errorMsg.includes('quota') || errorMsg.includes('RESOURCE_EXHAUSTED')) {
-      errorMsg = '⚠️ AI is currently busy (Free Tier Limit Reached). Please wait 1 minute and try again.';
+    if (errorMsg.includes('429') || errorMsg.includes('quota') || errorMsg.includes('rate_limit')) {
+      errorMsg = '⚠️ Groq AI is currently busy (Rate Limit Reached). Please wait a moment and try again.';
     }
     
     res.status(500).json({ error: errorMsg });
