@@ -1554,7 +1554,7 @@ Always format numbers clearly. Use bullet points for lists. Be concise but thoro
         { role: 'system', content: systemInstruction },
         { role: 'user', content: message }
       ],
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-20b',
       temperature: 0.5,
       max_tokens: 1024,
       top_p: 1,
