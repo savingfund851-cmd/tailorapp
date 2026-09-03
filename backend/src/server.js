@@ -1554,7 +1554,7 @@ Always format numbers clearly. Use bullet points for lists. Be concise but thoro
         { role: 'system', content: systemInstruction },
         { role: 'user', content: message }
       ],
-      model: 'llama3-8b-8192',
+      model: 'llama-3.3-70b-versatile',
       temperature: 0.5,
       max_tokens: 1024,
       top_p: 1,
